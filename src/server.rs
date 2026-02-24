@@ -38,9 +38,16 @@ struct ServerState {
     router: Router,
     handlers: Vec<HandlerSignature>,
     middlewares: Vec<PyObject>,
-    ws_routes: Vec<(String, PyObject)>,
-    req_proxy_class: Option<PyObject>,
-    json_dumps: Option<PyObject>,
+    pub ws_routes: Vec<(String, PyObject)>,
+    pub req_proxy_class: Option<PyObject>,
+    pub json_dumps: Option<PyObject>,
+    pub asyncio_mod: Option<PyObject>,
+    pub new_event_loop: Option<PyObject>,
+    pub set_event_loop: Option<PyObject>,
+}
+
+thread_local! {
+    static ASYNCIO_LOOP: std::cell::RefCell<Option<(PyObject, PyObject)>> = std::cell::RefCell::new(None);
 }
 
 /// The Rust HTTP server exposed to Python via PyO3.
@@ -205,7 +212,6 @@ impl Server {
             };
         }
 
-        // Cache globally used Python objects
         let req_proxy_class = py.import("ignyx.request").ok()
             .and_then(|m| m.getattr("Request").ok())
             .map(|c| c.into());
@@ -214,6 +220,10 @@ impl Server {
             .and_then(|m| m.getattr("dumps").ok())
             .map(|f| f.into());
 
+        let asyncio_mod = py.import("asyncio").ok().map(|m| m.into());
+        let new_event_loop = asyncio_mod.as_ref().and_then(|m| m.getattr(py, "new_event_loop").ok());
+        let set_event_loop = asyncio_mod.as_ref().and_then(|m| m.getattr(py, "set_event_loop").ok());
+
         let state = Arc::new(ServerState {
             router,
             handlers,
@@ -221,6 +231,9 @@ impl Server {
             ws_routes,
             req_proxy_class,
             json_dumps,
+            asyncio_mod,
+            new_event_loop,
+            set_event_loop,
         });
 
         println!("\n🔥 Ignyx server running at http://{addr}\n");
@@ -397,9 +410,25 @@ async fn handle_request(
                         let send_tx_for_py = send_tx.clone();
                         let recv_rx_for_py = recv_rx.clone();
                         let close_tx_for_py = close_tx.clone();
+                        let state_clone = state.clone();
 
                         tokio::task::spawn_blocking(move || {
                             Python::with_gil(|py| {
+                                // Ensure an asyncio event loop is set for this thread
+                                ASYNCIO_LOOP.with(|cell| {
+                                    let mut loop_ref = cell.borrow_mut();
+                                    if loop_ref.is_none() {
+                                        if let Some(new_loop_fn) = &state_clone.new_event_loop {
+                                            if let Ok(loop_obj) = new_loop_fn.call0(py) {
+                                                if let Some(set_loop_fn) = &state_clone.set_event_loop {
+                                                    let _ = set_loop_fn.call1(py, (loop_obj.clone_ref(py),));
+                                                    *loop_ref = Some(loop_obj);
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+
                                 // Create Python callback functions using Bound types (PyO3 0.23)
                                 let send_tx_inner = send_tx_for_py.clone();
                                 let send_fn = pyo3::types::PyCFunction::new_closure(
@@ -458,8 +487,9 @@ async fn handle_request(
                                                     .and_then(|v| v.extract())
                                                     .unwrap_or(false);
                                                 if is_coro {
-                                                    let asyncio = py.import("asyncio").unwrap();
-                                                    let _ = asyncio.call_method1("run", (&coro,));
+                                                    if let Some(asyncio_mod) = &state_clone.asyncio_mod {
+                                                        let _ = asyncio_mod.call_method1(py, "run", (&coro,));
+                                                    }
                                                 }
                                             }
                                         }
@@ -551,8 +581,10 @@ async fn handle_request(
                             if let Ok(hdict) = item.downcast::<pyo3::types::PyDict>() {
                                 let mut hmap = HashMap::new();
                                 for (k, v) in hdict {
-                                    if let (Ok(ks), Ok(vs)) = (k.extract::<String>(), v.extract::<String>()) {
-                                        hmap.insert(ks, vs);
+                                    if let Ok(ks) = k.extract::<String>() {
+                                        if let Ok(vs) = v.extract::<String>() {
+                                            hmap.insert(ks, vs);
+                                        }
                                     }
                                 }
                                 custom_headers = Some(hmap);
@@ -603,8 +635,23 @@ async fn handle_request(
         // Spawn blocking to decouple the Tokio reactor from Python GIL
         let result = tokio::task::spawn_blocking(move || {
             Python::with_gil(|py| -> PyResult<(String, String, u16, Option<HashMap<String, String>>, Option<PyObject>)> {
+                // Ensure an asyncio event loop is set for this thread
+                ASYNCIO_LOOP.with(|cell| {
+                    let mut loop_ref = cell.borrow_mut();
+                    if loop_ref.is_none() {
+                        if let Some(new_loop_fn) = &state_clone.new_event_loop {
+                            if let Ok(loop_obj) = new_loop_fn.call0(py) {
+                                if let Some(set_loop_fn) = &state_clone.set_event_loop {
+                                    let _ = set_loop_fn.call1(py, (loop_obj.clone_ref(py),));
+                                    *loop_ref = Some(loop_obj);
+                                }
+                            }
+                        }
+                    }
+                });
+
                 let handler = &state_clone.handlers[handler_index];
-                call_python_handler(
+                match call_python_handler(
                     py,
                     handler,
                     parts.method.as_str(),
@@ -614,7 +661,13 @@ async fn handle_request(
                     &parts.headers,
                     &body_bytes,
                     &state_clone,
-                )
+                ) {
+                    Ok(res) => Ok(res),
+                    Err(e) => {
+                        e.print_and_set_sys_last_vars(py);
+                        Err(e)
+                    }
+                }
             })
         }).await.unwrap();
 
@@ -915,12 +968,34 @@ fn call_python_handler(
         Ok(res) => {
             // Use cached is_async flag (computed once at startup, not per-request)
             if handler_sig.is_async {
-                // Run the coroutine via asyncio.run()
-                let asyncio = py.import("asyncio")?;
-                match asyncio.call_method1("run", (&res,)) {
-                    Ok(awaited) => awaited.unbind(),
-                    Err(e) => return Err(e),
-                }
+                let awaited = ASYNCIO_LOOP.with(|loop_cell| {
+                    let mut loop_opt = loop_cell.borrow_mut();
+                    
+                    // Create loop on this thread if it doesn't exist
+                    if loop_opt.is_none() {
+                        if let Some(ref new_loop_func) = state.new_event_loop {
+                            if let Ok(new_loop) = new_loop_func.call0(py) {
+                                if let Some(ref set_loop_func) = state.set_event_loop {
+                                    let _ = set_loop_func.call1(py, (&new_loop,));
+                                }
+                                if let Ok(run_method) = new_loop.getattr(py, "run_until_complete") {
+                                    *loop_opt = Some((new_loop, run_method));
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Execute the coroutine on the thread-local persistent loop
+                    if let Some(ref cached) = *loop_opt {
+                        cached.1.call1(py, (&res,))
+                    } else {
+                        // Extreme fallback
+                        let asyncio = py.import("asyncio")?;
+                        asyncio.call_method1("run", (&res,))
+                    }
+                })?;
+                
+                awaited.unbind()
             } else {
                 res
             }
