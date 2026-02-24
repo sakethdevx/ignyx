@@ -1,0 +1,35 @@
+# Rust build artifacts
+target/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Maturin/wheel builds
+*.whl
+wheels/
+
+# Benchmarks output
+*.log

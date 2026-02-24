@@ -1,0 +1,27 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ignyx"
+version = "0.1.0"
+description = "Ignite your API. Built in Rust, runs in Python."
+requires-python = ">=3.9"
+license = "MIT"
+authors = [
+    { name = "Saketh Jangala" }
+]
+keywords = ["web", "framework", "rust", "fast", "api"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Internet :: WWW/HTTP",
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "ignyx._core"
