@@ -419,10 +419,12 @@ async fn handle_request(
                                     let mut loop_ref = cell.borrow_mut();
                                     if loop_ref.is_none() {
                                         if let Some(new_loop_fn) = &state_clone.new_event_loop {
-                                            if let Ok(loop_obj) = new_loop_fn.call0(py) {
+                                            if let Ok(new_loop) = new_loop_fn.call0(py) {
                                                 if let Some(set_loop_fn) = &state_clone.set_event_loop {
-                                                    let _ = set_loop_fn.call1(py, (loop_obj.clone_ref(py),));
-                                                    *loop_ref = Some(loop_obj);
+                                                    let _ = set_loop_fn.call1(py, (new_loop.clone_ref(py),));
+                                                }
+                                                if let Ok(run_method) = new_loop.getattr(py, "run_until_complete") {
+                                                    *loop_ref = Some((new_loop, run_method));
                                                 }
                                             }
                                         }
@@ -487,9 +489,13 @@ async fn handle_request(
                                                     .and_then(|v| v.extract())
                                                     .unwrap_or(false);
                                                 if is_coro {
-                                                    if let Some(asyncio_mod) = &state_clone.asyncio_mod {
-                                                        let _ = asyncio_mod.call_method1(py, "run", (&coro,));
-                                                    }
+                                                    ASYNCIO_LOOP.with(|cell| {
+                                                        if let Some(ref cached) = *cell.borrow() {
+                                                            let _ = cached.1.call1(py, (&coro,));
+                                                        } else if let Some(asyncio_mod) = &state_clone.asyncio_mod {
+                                                            let _ = asyncio_mod.call_method1(py, "run", (&coro,));
+                                                        }
+                                                    });
                                                 }
                                             }
                                         }
