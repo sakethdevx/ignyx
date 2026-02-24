@@ -2,16 +2,14 @@
 
 **Ignite your API. Built in Rust, runs in Python.**
 
-Ignyx is a high-performance Python web framework powered by Rust (Hyper + Tokio + PyO3). It delivers **200K+ req/sec** — 50x faster than FastAPI.
+Ignyx is a high-performance Python web framework powered by Rust (Hyper + Tokio + PyO3). It delivers **50K+ req/sec** — 8x faster than FastAPI.
 
 ## Benchmarks
 
 | Framework | JSON req/s | Plaintext req/s |
 |-----------|----------:|----------------:|
-| 🔥 **Ignyx** | **203,699** | **208,509** |
-| Starlette | 5,129 | 5,333 |
-| FastAPI | 4,003 | 4,291 |
-| Flask | 1,612 | — |
+| 🔥 **Ignyx** | **37,138** | **51,771** |
+| FastAPI | 4,844 | 5,846 |
 
 ## Quick Start
 
@@ -33,7 +31,7 @@ app.run(host="0.0.0.0", port=8000)
 
 ## Features
 
-- ⚡ **200K+ req/sec** — Rust HTTP core (Hyper + Tokio)
+- ⚡ **50K+ req/sec** — Rust HTTP core (Hyper + Tokio)
 - 🎯 **FastAPI-like syntax** — Familiar decorator-based routing
 - 📖 **Auto-generated docs** — Swagger UI at `/docs`, ReDoc at `/redoc`
 - 🔧 **Middleware** — Before/after/error middleware with CORS built-in

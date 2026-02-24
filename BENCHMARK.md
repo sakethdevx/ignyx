@@ -1,7 +1,7 @@
 # Ignyx Benchmark Report — Honest Numbers
 
-> **Machine**: MacBook Air, Apple Silicon (M-series) — Python via Rosetta x86_64
-> **Python**: 3.12 (Anaconda)
+> **Machine**: Apple Silicon M2, native ARM64
+> **Python**: 3.12
 > **Rust**: 1.93.1, release profile (LTO=fat, opt-level=3)
 > **Tool**: `wrk -t4 -c100 -d10s`
 > **Methodology**: Every request acquires the GIL and calls the Python handler. No response caching. No shortcuts.
@@ -10,17 +10,17 @@
 
 | Endpoint | Ignyx (req/s) | FastAPI (req/s) | Speedup |
 |----------|-------------:|----------------:|--------:|
-| `/plaintext` | **85,779** | 4,443 | **19.3x** |
-| `/json` | **67,075** | 3,852 | **17.4x** |
-| `/users/42` (path param) | **49,064** | 3,354 | **14.6x** |
+| `/plaintext` | **51,771** | 5,846 | **8.8x** |
+| `/json` | **37,138** | 4,844 | **7.6x** |
+| `/users/42` (path param) | **43,261** | 5,306 | **8.1x** |
 
 ## Latency
 
 | Endpoint | Ignyx (avg) | FastAPI (avg) |
 |----------|------------:|--------------:|
-| `/plaintext` | 1.26ms | 22.78ms |
-| `/json` | 1.88ms | 26.26ms |
-| `/users/42` | 2.76ms | 30.23ms |
+| `/plaintext` | 2.46ms | 17.32ms |
+| `/json` | 4.21ms | 21.23ms |
+| `/users/42` | 3.42ms | 18.89ms |
 
 ## What's happening on each request
 
