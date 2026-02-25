@@ -56,9 +56,74 @@ class Ignyx:
         self.redoc_url = redoc_url
         self.openapi_url = openapi_url
         self._openapi_schema: Optional[dict] = None
+        self._exception_handlers: dict = {}
+
+        # Register catch-all routes to handle 404
+        from ignyx.responses import JSONResponse
+        from ignyx.request import Request
+        def not_found(request: Request, path: str = ""):
+            res = self._handle_exception(request, None, 404)
+            if res:
+                return res
+            return JSONResponse({"error": "Not Found", "detail": "No route found"}, status_code=404)
+        for method in ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]:
+            try:
+                self._server.add_route(method, "/{*path}", not_found)
+            except Exception:
+                pass
 
         # Add default error handler
         self._middlewares.append(ErrorHandlerMiddleware(debug=debug))
+
+    def exception_handler(self, status_code_or_exc):
+        def decorator(func):
+            self._exception_handlers[status_code_or_exc] = func
+            return func
+        return decorator
+
+    def _handle_exception(self, request, exc, status_code):
+        # Check exception type
+        for exc_type, handler in self._exception_handlers.items():
+            if isinstance(exc_type, type) and isinstance(exc, exc_type):
+                return handler(request, exc)
+        # Check status code
+        if status_code in self._exception_handlers:
+            return self._exception_handlers[status_code](request, exc)
+        return None
+
+    def _create_dispatch(self, handler: Callable) -> Callable:
+        from functools import wraps
+        import inspect
+        if inspect.iscoroutinefunction(handler):
+            @wraps(handler)
+            async def async_dispatch(*args, **kw):
+                request = kw.get("request") or (args[0] if args else None)
+                try:
+                    res = await handler(*args, **kw)
+                    if hasattr(res, "status_code"):
+                        handled = self._handle_exception(request, None, res.status_code)
+                        if handled: return handled
+                    return res
+                except Exception as exc:
+                    handled = self._handle_exception(request, exc, 500)
+                    if handled: return handled
+                    raise exc
+            return async_dispatch
+        else:
+            @wraps(handler)
+            def sync_dispatch(*args, **kw):
+                request = kw.get("request") or (args[0] if args else None)
+                try:
+                    res = handler(*args, **kw)
+                    if hasattr(res, "status_code"):
+                        handled = self._handle_exception(request, None, res.status_code)
+                        if handled: return handled
+                    return res
+                except Exception as exc:
+                    handled = self._handle_exception(request, exc, 500)
+                    if handled: return handled
+                    raise exc
+            return sync_dispatch
 
     def add_middleware(self, middleware: Middleware):
         """Add a middleware to the application."""
@@ -66,7 +131,8 @@ class Ignyx:
 
     def _add_route(self, method: str, path: str, handler: Callable, **kwargs) -> Callable:
         """Register a route handler."""
-        self._server.add_route(method, path, handler)
+        dispatch = self._create_dispatch(handler)
+        self._server.add_route(method, path, dispatch)
         self._routes.append({
             "method": method,
             "path": path,
@@ -78,7 +144,8 @@ class Ignyx:
 
     def include_router(self, router):
         for method, path, handler in router.routes:
-            self._server.add_route(method, path, handler)
+            dispatch = self._create_dispatch(handler)
+            self._server.add_route(method, path, dispatch)
             self._routes.append({
                 "method": method,
                 "path": path,
