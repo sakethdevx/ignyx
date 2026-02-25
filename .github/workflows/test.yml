@@ -20,13 +20,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         
-      - name: Install dependencies
+      - name: Install dependencies, build, and test
         run: |
+          python -m venv .venv
+          source .venv/bin/activate
           python -m pip install --upgrade pip
           pip install maturin pytest pydantic httpx websockets python-multipart
-          
-      - name: Build and install Ignyx
-        run: maturin develop --release
-        
-      - name: Run pytest
-        run: pytest tests/ -v
+          maturin develop --release
+          pytest tests/ -v
