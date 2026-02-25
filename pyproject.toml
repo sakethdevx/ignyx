@@ -4,14 +4,14 @@ build-backend = "maturin"
 
 [project]
 name = "ignyx"
-version = "0.1.0"
+version = "0.2.0"
 description = "Rust-powered Python web framework — 10x faster than FastAPI"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
     { name = "Saketh Jangala" }
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 keywords = ["web", "framework", "rust", "api", "http", "fast"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -26,6 +26,9 @@ classifiers = [
     "Programming Language :: Rust",
     "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+dependencies = [
+    "pydantic>=2.0.0"
 ]
 
 [project.urls]
