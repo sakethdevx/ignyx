@@ -1,0 +1,22 @@
+site_name: Ignyx
+site_description: Ignite your API. Built in Rust, runs in Python.
+site_url: https://sakethdevx.github.io/ignyx
+repo_url: https://github.com/sakethdevx/ignyx
+repo_name: sakethdevx/ignyx
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - content.code.copy
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Routing: routing.md
+  - Request: request.md
+  - Response: response.md
+  - Middleware: middleware.md
+  - Dependency Injection: dependency_injection.md
+  - Validation: validation.md
+  - WebSockets: websockets.md
+  - Deployment: deployment.md
+  - Benchmarks: benchmarks.md
