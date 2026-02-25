@@ -1063,6 +1063,44 @@ fn call_python_handler(
         }
     }
 
+    // Check if result is a BaseResponse instance (has content_type attr + render method)
+    if actual_result.hasattr("content_type")? && actual_result.hasattr("render")? && !actual_result.is_instance_of::<PyDict>() && !actual_result.is_instance_of::<PyString>() {
+        let ct: String = actual_result.getattr("content_type")?.extract()?;
+        let sc: u16 = actual_result.getattr("status_code")?.extract()?;
+        let rendered = actual_result.call_method0("render")?;
+        let body_str: String = if let Ok(s) = rendered.extract::<String>() {
+            s
+        } else if let Ok(b) = rendered.extract::<Vec<u8>>() {
+            // FileResponse returns bytes — convert to string (lossy)
+            String::from_utf8_lossy(&b).to_string()
+        } else {
+            rendered.str()?.extract::<String>()?
+        };
+        // Extract headers from the response object
+        let resp_headers: Option<HashMap<String, String>> = if let Ok(hdict) = actual_result.getattr("headers") {
+            if let Ok(dict) = hdict.downcast::<PyDict>() {
+                let mut hmap = HashMap::new();
+                for (k, v) in dict {
+                    if let (Ok(ks), Ok(vs)) = (k.extract::<String>(), v.extract::<String>()) {
+                        hmap.insert(ks, vs);
+                    }
+                }
+                if hmap.is_empty() { custom_headers } else {
+                    // Merge with any existing custom_headers
+                    match custom_headers {
+                        Some(mut existing) => { existing.extend(hmap); Some(existing) }
+                        None => Some(hmap)
+                    }
+                }
+            } else {
+                custom_headers
+            }
+        } else {
+            custom_headers
+        };
+        return Ok((body_str, ct, sc, resp_headers, injected_task));
+    }
+
     // Convert the actual body result to a response string
     let (body_str, content_type) = if actual_result.is_instance_of::<PyDict>() || actual_result.is_instance_of::<pyo3::types::PyList>() {
         // Dict/List → JSON
