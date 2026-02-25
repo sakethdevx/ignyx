@@ -8,6 +8,21 @@ class BaseResponse:
     def render(self):
         return self.content
 
+    def set_cookie(self, key: str, value: str, max_age: int = None,
+                   httponly: bool = False, secure: bool = False,
+                   samesite: str = "lax", path: str = "/"):
+        cookie = f"{key}={value}; Path={path}; SameSite={samesite}"
+        if max_age is not None:
+            cookie += f"; Max-Age={max_age}"
+        if httponly:
+            cookie += "; HttpOnly"
+        if secure:
+            cookie += "; Secure"
+        self.headers["set-cookie"] = cookie
+
+    def delete_cookie(self, key: str, path: str = "/"):
+        self.headers["set-cookie"] = f"{key}=; Path={path}; Max-Age=0"
+
 
 class JSONResponse(BaseResponse):
     def __init__(self, content, status_code=200, headers=None):

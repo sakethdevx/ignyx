@@ -53,3 +53,16 @@ class Request:
     @property
     def body(self) -> bytes:
         return bytes(self._body_bytes)
+
+    @property
+    def cookies(self) -> dict:
+        cookie_header = self.headers.get("cookie", "")
+        if not cookie_header:
+            return {}
+        cookies = {}
+        for part in cookie_header.split(";"):
+            part = part.strip()
+            if "=" in part:
+                key, _, value = part.partition("=")
+                cookies[key.strip()] = value.strip()
+        return cookies
