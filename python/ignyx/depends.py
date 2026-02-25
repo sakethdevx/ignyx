@@ -5,6 +5,7 @@ Inspired by FastAPI's Depends() pattern.
 
 from typing import Any, Callable, Optional
 import inspect
+import concurrent.futures
 
 
 class Depends:
@@ -55,7 +56,9 @@ class BackgroundTask:
         self._tasks.append((func, args, kwargs))
 
     def execute(self):
-        """Execute all pending background tasks sequentially via synchronous thread execution."""
+        """Execute all pending background tasks sequentially."""
+        import concurrent.futures
+        
         for func, args, kwargs in self._tasks:
             try:
                 if inspect.iscoroutinefunction(func):
@@ -69,7 +72,15 @@ class BackgroundTask:
                     except RuntimeError:
                         asyncio.run(func(*args, **kwargs))
                 else:
-                    func(*args, **kwargs)
+                    # Run sync tasks in a thread pool to prevent blocking the event loop
+                    import asyncio
+                    try:
+                        loop = asyncio.get_running_loop()
+                        with concurrent.futures.ThreadPoolExecutor() as pool:
+                            loop.run_in_executor(pool, lambda: func(*args, **kwargs))
+                    except RuntimeError:
+                        # Fallback if no loop is running
+                        func(*args, **kwargs)
             except Exception as e:
                 print(f"Background task error: {e}")
 

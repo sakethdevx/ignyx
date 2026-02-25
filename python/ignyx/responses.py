@@ -1,3 +1,5 @@
+import os
+
 class BaseResponse:
     def __init__(self, content, status_code=200, headers=None):
         self.content = content
@@ -62,5 +64,14 @@ class FileResponse(BaseResponse):
         self.headers["content-disposition"] = f'attachment; filename="{self.filename}"'
 
     def render(self):
+        import os
+        # Safety rail: Prevent OOM crashes by capping in-memory file serving to 10MB
+        max_size = 10 * 1024 * 1024 
+        if os.path.exists(self.path) and os.path.getsize(self.path) > max_size:
+            raise RuntimeError(
+                f"File '{self.filename}' exceeds the 10MB limit for FileResponse. "
+                "Large file streaming support is planned for Ignyx v0.3.0."
+            )
+            
         with open(self.path, "rb") as f:
             return f.read()
