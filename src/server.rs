@@ -619,8 +619,12 @@ async fn handle_request(
         // Zero-allocation body check
         let needs_body = handler.param_names.iter().any(|n| n == "body");
         let needs_request = !state.middlewares.is_empty() || handler.param_names.iter().any(|n| n == "request");
+        let is_multipart = parts.headers.get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.contains("multipart/form-data"))
+            .unwrap_or(false);
         
-        let body_bytes = if needs_body || needs_request {
+        let body_bytes = if needs_body || needs_request || is_multipart {
             use http_body_util::BodyExt;
             match body.collect().await {
                 Ok(collected) => collected.to_bytes().to_vec(),
@@ -629,6 +633,33 @@ async fn handle_request(
         } else {
             Vec::new() // Zero-cost if endpoint doesn't accept body
         };
+
+        let mut form_fields: HashMap<String, String> = HashMap::new();
+        let mut form_files: HashMap<String, (String, String, Vec<u8>)> = HashMap::new();
+
+        if is_multipart {
+            if let Some(content_type) = parts.headers.get("content-type").and_then(|v| v.to_str().ok()) {
+                if let Some(boundary) = multer::parse_boundary(content_type).ok() {
+                    let bytes_clone = body_bytes.clone();
+                    let stream = futures_util::stream::once(async move {
+                        Ok::<bytes::Bytes, std::convert::Infallible>(bytes::Bytes::from(bytes_clone))
+                    });
+                    let mut multipart = multer::Multipart::new(stream, boundary);
+                    while let Some(mut field) = multipart.next_field().await.unwrap_or(None) {
+                        let name = field.name().unwrap_or("").to_string();
+                        if let Some(filename_ref) = field.file_name() {
+                            let filename = filename_ref.to_string();
+                            let c_type = field.content_type().map(|c| c.to_string()).unwrap_or_else(|| "application/octet-stream".to_string());
+                            let data = field.bytes().await.unwrap_or_default().to_vec();
+                            form_files.insert(name, (filename, c_type, data));
+                        } else {
+                            let text = field.text().await.unwrap_or_default();
+                            form_fields.insert(name, text);
+                        }
+                    }
+                }
+            }
+        }
 
         // HONEST PATH: ship GIL execution to a background blocking thread
         // to prevent holding up the Tokio runtime reactor with Python execution lock
@@ -661,6 +692,8 @@ async fn handle_request(
                     parts.uri.query().unwrap_or(""),
                     &parts.headers,
                     &body_bytes,
+                    &form_fields,
+                    &form_files,
                     &state_clone,
                 ) {
                     Ok(res) => Ok(res),
@@ -751,6 +784,8 @@ fn call_python_handler(
     query_string: &str,
     headers: &hyper::HeaderMap,
     body_bytes: &[u8],
+    form_fields: &HashMap<String, String>,
+    form_files: &HashMap<String, (String, String, Vec<u8>)>,
     state: &ServerState,
 ) -> PyResult<(String, String, u16, Option<HashMap<String, String>>, Option<PyObject>)> {
     let handler = &handler_sig.handler;
@@ -842,6 +877,11 @@ fn call_python_handler(
     // 2. Request / BackgroundTask object injection
     let mut injected_task: Option<PyObject> = None;
     for name in param_names {
+        let is_injected = call_kwargs_opt.as_ref().map_or(false, |k| k.contains(name).unwrap_or(false));
+        if is_injected {
+            continue;
+        }
+
         if name == "request" {
             if let Some(ref req_obj) = py_request_wrapped_opt {
                 if call_kwargs_opt.is_none() {
@@ -865,9 +905,28 @@ fn call_python_handler(
                                 }
                             }
                         }
+                    } else if name_str == "UploadFile" {
+                        if let Some((filename, content_type, file_data)) = form_files.get(name) {
+                            if let Ok(uploads_mod) = py.import("ignyx.uploads") {
+                                if let Ok(upload_cls) = uploads_mod.getattr("UploadFile") {
+                                    let data_bytes = pyo3::types::PyBytes::new(py, file_data);
+                                    if let Ok(upload_obj) = upload_cls.call1((filename, content_type, data_bytes)) {
+                                        if call_kwargs_opt.is_none() {
+                                            call_kwargs_opt = Some(PyDict::new(py));
+                                        }
+                                        call_kwargs_opt.as_ref().unwrap().set_item(name, upload_obj)?;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
+        } else if let Some(text) = form_fields.get(name) {
+            if call_kwargs_opt.is_none() {
+                call_kwargs_opt = Some(PyDict::new(py));
+            }
+            call_kwargs_opt.as_ref().unwrap().set_item(name, text)?;
         }
     }
 

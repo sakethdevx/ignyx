@@ -12,6 +12,7 @@ from ignyx.responses import (
     JSONResponse, HTMLResponse, PlainTextResponse,
     RedirectResponse, FileResponse
 )
+from ignyx.uploads import UploadFile
 
 __all__ = [
     "Ignyx",
@@ -25,5 +26,6 @@ __all__ = [
     "PlainTextResponse",
     "RedirectResponse",
     "FileResponse",
+    "UploadFile",
 ]
 __version__ = "0.1.0"
