@@ -7,6 +7,7 @@ from ignyx.app import Ignyx
 from ignyx._core import Request, Response
 from ignyx.middleware import Middleware
 from ignyx.depends import Depends
+from ignyx.router import Router
 
 __all__ = [
     "Ignyx",
@@ -14,5 +15,6 @@ __all__ = [
     "Response",
     "Middleware",
     "Depends",
+    "Router",
 ]
 __version__ = "0.1.0"

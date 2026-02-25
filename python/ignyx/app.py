@@ -76,6 +76,16 @@ class Ignyx:
         })
         return handler
 
+    def include_router(self, router):
+        for method, path, handler in router.routes:
+            self._server.add_route(method, path, handler)
+            self._routes.append({
+                "method": method,
+                "path": path,
+                "handler": handler,
+                "name": handler.__name__,
+            })
+
     def get(self, path: str, **kwargs) -> Callable:
         """Register a GET route."""
         def decorator(func: Callable) -> Callable:
