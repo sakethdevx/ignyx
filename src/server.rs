@@ -221,8 +221,8 @@ impl Server {
             .map(|f| f.into());
 
         let asyncio_mod = py.import("asyncio").ok().map(|m| m.into());
-        let new_event_loop = asyncio_mod.as_ref().and_then(|m| m.getattr(py, "new_event_loop").ok());
-        let set_event_loop = asyncio_mod.as_ref().and_then(|m| m.getattr(py, "set_event_loop").ok());
+        let new_event_loop = asyncio_mod.as_ref().and_then(|m: &PyObject| m.getattr(py, "new_event_loop").ok());
+        let set_event_loop = asyncio_mod.as_ref().and_then(|m: &PyObject| m.getattr(py, "set_event_loop").ok());
 
         let state = Arc::new(ServerState {
             router,
@@ -279,7 +279,7 @@ async fn run_server(
         if has_ws {
             // WebSocket-capable connection handler (with upgrade support)
             tokio::task::spawn(async move {
-                if let Err(err) = http1::Builder::new()
+                if let Err(_err) = http1::Builder::new()
                     .serve_connection(
                         io,
                         service_fn(move |req| {
@@ -290,15 +290,12 @@ async fn run_server(
                     .with_upgrades()
                     .await
                 {
-                    if !err.to_string().contains("connection was not ready") {
-                        eprintln!("Error serving connection: {err}");
-                    }
                 }
             });
         } else {
             // Fast path: no WebSocket routes, skip upgrade overhead
             tokio::task::spawn(async move {
-                if let Err(err) = http1::Builder::new()
+                if let Err(_err) = http1::Builder::new()
                     .serve_connection(
                         io,
                         service_fn(move |req| {
@@ -308,7 +305,6 @@ async fn run_server(
                     )
                     .await
                 {
-                    eprintln!("Error serving connection: {err}");
                 }
             });
         }
@@ -511,8 +507,8 @@ async fn handle_request(
                         write_task.abort();
                         read_task.abort();
                     }
-                    Err(e) => {
-                        eprintln!("WebSocket upgrade error: {e}");
+                    Err(_e) => {
+                        // eprintln!("WebSocket upgrade error: {e}");
                     }
                 }
             });
@@ -647,9 +643,8 @@ async fn handle_request(
                     if loop_ref.is_none() {
                         if let Some(new_loop_fn) = &state_clone.new_event_loop {
                             if let Ok(loop_obj) = new_loop_fn.call0(py) {
-                                if let Some(set_loop_fn) = &state_clone.set_event_loop {
-                                    let _ = set_loop_fn.call1(py, (loop_obj.clone_ref(py),));
-                                    *loop_ref = Some(loop_obj);
+                                if let Ok(run_method) = loop_obj.getattr(py, "run_until_complete") {
+                                    *loop_ref = Some((loop_obj, run_method));
                                 }
                             }
                         }
@@ -993,15 +988,15 @@ fn call_python_handler(
                     
                     // Execute the coroutine on the thread-local persistent loop
                     if let Some(ref cached) = *loop_opt {
-                        cached.1.call1(py, (&res,))
+                        Ok::<PyObject, PyErr>(cached.1.bind(py).call1((&res,))?.unbind())
                     } else {
                         // Extreme fallback
                         let asyncio = py.import("asyncio")?;
-                        asyncio.call_method1("run", (&res,))
+                        Ok::<PyObject, PyErr>(asyncio.call_method1("run", (&res,))?.unbind())
                     }
                 })?;
                 
-                awaited.unbind()
+                awaited
             } else {
                 res
             }
@@ -1059,9 +1054,9 @@ fn call_python_handler(
             if let Ok(headers_dict) = tuple.get_item(2)?.downcast::<PyDict>() {
                 let mut hmap = HashMap::new();
                 for (k, v) in headers_dict {
-                    if let (Ok(ks), Ok(vs)) = (k.extract::<String>(), v.extract::<String>()) {
-                        hmap.insert(ks, vs);
-                    }
+                    let ks: String = k.extract::<String>()?;
+                    let vs: String = v.extract::<String>()?;
+                    hmap.insert(ks, vs);
                 }
                 custom_headers = Some(hmap);
             }

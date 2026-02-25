@@ -172,10 +172,10 @@ class Ignyx:
         # Register docs routes before starting
         self._register_docs_routes()
 
-        print(f"🔥 Ignyx v{self.version} — {self.title}", flush=True)
-        print(f"   📖 Docs:  http://{host}:{port}{self.docs_url}", flush=True)
-        print(f"   📖 ReDoc: http://{host}:{port}{self.redoc_url}", flush=True)
-        print(f"   📋 OpenAPI: http://{host}:{port}{self.openapi_url}", flush=True)
+        # print(f"🔥 Ignyx v{self.version} — {self.title}", flush=True)
+        # print(f"   📖 Docs:  http://{host}:{port}{self.docs_url}", flush=True)
+        # print(f"   📖 ReDoc: http://{host}:{port}{self.redoc_url}", flush=True)
+        # print(f"   📋 OpenAPI: http://{host}:{port}{self.openapi_url}", flush=True)
 
         # Build WebSocket route list for Rust
         ws_routes = [(ws["path"], ws["handler"]) for ws in self._ws_routes]
