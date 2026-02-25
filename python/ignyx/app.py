@@ -83,7 +83,7 @@ class Ignyx:
                 "method": method,
                 "path": path,
                 "handler": handler,
-                "name": handler.__name__,
+                "name": getattr(handler, "__name__", "unknown")
             })
 
     def get(self, path: str, **kwargs) -> Callable:

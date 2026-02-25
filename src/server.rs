@@ -1064,8 +1064,8 @@ fn call_python_handler(
     }
 
     // Convert the actual body result to a response string
-    let (body_str, content_type) = if actual_result.is_instance_of::<PyDict>() {
-        // Dict → JSON
+    let (body_str, content_type) = if actual_result.is_instance_of::<PyDict>() || actual_result.is_instance_of::<pyo3::types::PyList>() {
+        // Dict/List → JSON
         let json_str: String = if let Some(ref dumps_obj) = state.json_dumps {
             dumps_obj.bind(py).call1((&actual_result,))?.extract()?
         } else {

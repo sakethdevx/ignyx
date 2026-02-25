@@ -30,3 +30,4 @@ class Router:
             self._add_route("DELETE", path, func)
             return func
         return decorator
+
