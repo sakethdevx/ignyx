@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - Unreleased
+## [1.0.0] - Unreleased
 
 ### Added
 - **PEP 561 Compliance:** Added `py.typed` marker to enable strict type-checking in external projects.
@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Refactored `__version__` export in python module to accurately reflect Rust crate versions.
-- Updated default `server` headers globally from `Ignyx/0.1.0` to `Ignyx/2.0.0` making HTTP response metadata accurate.
+- Updated default `server` headers globally from `Ignyx/0.1.0` to `Ignyx/1.0.0` making HTTP response metadata accurate.
 - Promoted PyPI classifier from `Development Status :: 3 - Alpha` to `Development Status :: 5 - Production/Stable`.
 - Added `Framework :: AsyncIO` PyPI classifier for exact framework precision.
 
