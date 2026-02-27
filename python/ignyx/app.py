@@ -36,7 +36,7 @@ class Ignyx:
     def __init__(
         self,
         title: str = "Ignyx",
-        version: str = "1.0.3",
+        version: str = "1.0.4",
         debug: bool = False,
         description: str = "",
         docs_url: str = "/docs",
