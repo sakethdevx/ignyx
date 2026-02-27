@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sakethdevx/ignyx/main/docs/assets/ignyx-logo.png" alt="Ignyx Logo" width="200" onerror="this.src='https://placehold.co/400x150/1e1e2e/e0e0e0?text=Ignyx&font=lora'">
+  <img src="docs/assets/ignyx-logo.png" alt="Ignyx Logo" width="200" onerror="this.src='https://placehold.co/400x150/1e1e2e/e0e0e0?text=Ignyx&font=lora'">
   <br>
   <em>Ignite your API. Built in Rust, runs in Python.</em>
 </p>
