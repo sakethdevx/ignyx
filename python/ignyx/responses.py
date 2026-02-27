@@ -1,18 +1,30 @@
 import os
+from typing import Any, Dict, Optional
 
 class BaseResponse:
-    def __init__(self, content, status_code=200, headers=None):
-        self.content = content
-        self.status_code = status_code
-        self.headers = headers or {}
-        self.content_type = "text/plain"
+    """
+    Base class for all Ignyx responses.
+    """
+    def __init__(self, content: Any, status_code: int = 200, headers: Optional[Dict[str, str]] = None) -> None:
+        self.content: Any = content
+        self.status_code: int = status_code
+        self.headers: Dict[str, str] = headers or {}
+        self.content_type: str = "text/plain"
 
-    def render(self):
+    def render(self) -> Any:
         return self.content
 
-    def set_cookie(self, key: str, value: str, max_age: int = None,
-                   httponly: bool = False, secure: bool = False,
-                   samesite: str = "lax", path: str = "/"):
+    def set_cookie(
+        self, 
+        key: str, 
+        value: str, 
+        max_age: Optional[int] = None,
+        httponly: bool = False, 
+        secure: bool = False,
+        samesite: str = "lax", 
+        path: str = "/"
+    ) -> None:
+        """Set a cookie on the response."""
         cookie = f"{key}={value}; Path={path}; SameSite={samesite}"
         if max_age is not None:
             cookie += f"; Max-Age={max_age}"
@@ -22,48 +34,70 @@ class BaseResponse:
             cookie += "; Secure"
         self.headers["set-cookie"] = cookie
 
-    def delete_cookie(self, key: str, path: str = "/"):
+    def delete_cookie(self, key: str, path: str = "/") -> None:
+        """Delete a cookie from the response."""
         self.headers["set-cookie"] = f"{key}=; Path={path}; Max-Age=0"
 
 
 class JSONResponse(BaseResponse):
-    def __init__(self, content, status_code=200, headers=None):
+    """
+    Returns a JSON encoded response.
+    """
+    def __init__(self, content: Any, status_code: int = 200, headers: Optional[Dict[str, str]] = None) -> None:
         super().__init__(content, status_code, headers)
         self.content_type = "application/json"
 
-    def render(self):
+    def render(self) -> str:
         import json
         return json.dumps(self.content)
 
 
 class HTMLResponse(BaseResponse):
-    def __init__(self, content, status_code=200, headers=None):
+    """
+    Returns an HTML response.
+    """
+    def __init__(self, content: str, status_code: int = 200, headers: Optional[Dict[str, str]] = None) -> None:
         super().__init__(content, status_code, headers)
         self.content_type = "text/html; charset=utf-8"
 
 
 class PlainTextResponse(BaseResponse):
-    def __init__(self, content, status_code=200, headers=None):
+    """
+    Returns a plain text response.
+    """
+    def __init__(self, content: str, status_code: int = 200, headers: Optional[Dict[str, str]] = None) -> None:
         super().__init__(content, status_code, headers)
         self.content_type = "text/plain; charset=utf-8"
 
 
 class RedirectResponse(BaseResponse):
-    def __init__(self, url, status_code=302, headers=None):
-        super().__init__("", status_code, headers or {})
+    """
+    Returns an HTTP redirect.
+    """
+    def __init__(self, url: str, status_code: int = 302, headers: Optional[Dict[str, str]] = None) -> None:
+        super().__init__("", status_code, headers)
         self.content_type = "text/plain"
         self.headers["location"] = url
 
 
 class FileResponse(BaseResponse):
-    def __init__(self, path, filename=None, status_code=200, headers=None):
-        super().__init__("", status_code, headers or {})
-        self.path = path
-        self.filename = filename or path.split("/")[-1]
-        self.content_type = "application/octet-stream"
+    """
+    Returns a file attachment response.
+    """
+    def __init__(
+        self, 
+        path: str, 
+        filename: Optional[str] = None, 
+        status_code: int = 200, 
+        headers: Optional[Dict[str, str]] = None
+    ) -> None:
+        super().__init__("", status_code, headers)
+        self.path: str = path
+        self.filename: str = filename or path.split("/")[-1]
+        self.content_type: str = "application/octet-stream"
         self.headers["content-disposition"] = f'attachment; filename="{self.filename}"'
 
-    def render(self):
+    def render(self) -> bytes:
         import os
         # Safety rail: Prevent OOM crashes by capping in-memory file serving to 10MB
         max_size = 10 * 1024 * 1024 

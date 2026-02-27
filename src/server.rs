@@ -599,7 +599,7 @@ async fn handle_request(
             let mut builder = HyperResponse::builder()
                 .status(200)
                 .header("content-type", "text/plain")
-                .header("server", "Ignyx/0.1.0");
+                .header("server", "Ignyx/2.0.0");
                 
             if let Some(h) = custom_headers {
                 for (k, v) in h {
@@ -710,7 +710,7 @@ async fn handle_request(
                     let mut builder = HyperResponse::builder()
                         .status(status)
                         .header("content-type", &content_type)
-                        .header("server", "Ignyx/0.1.0");
+                        .header("server", "Ignyx/2.0.0");
                         
                     if let Some(h) = custom_headers {
                         for (k, v) in h {
@@ -746,7 +746,7 @@ async fn handle_request(
                     let response = HyperResponse::builder()
                         .status(500)
                         .header("content-type", "application/json")
-                        .header("server", "Ignyx/0.1.0")
+                        .header("server", "Ignyx/2.0.0")
                         .body(Full::new(Bytes::from(error_body)))
                         .unwrap();
                     return Ok(response);
@@ -765,7 +765,7 @@ async fn handle_request(
     let response = HyperResponse::builder()
         .status(404)
         .header("content-type", "application/json")
-        .header("server", "Ignyx/0.1.0")
+        .header("server", "Ignyx/2.0.0")
         .body(Full::new(Bytes::from(body)))
         .unwrap();
 
