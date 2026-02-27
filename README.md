@@ -15,7 +15,7 @@
     <img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Supported Python versions">
   </a>
   <a href="https://github.com/sakethdevx/ignyx/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/sakethdevx/ignyx" alt="License">
+    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
   </a>
 </p>
 
