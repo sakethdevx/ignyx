@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/ignyx/">
-    <img src="https://img.shields.io/pypi/v/ignyx.svg?color=success&label=PyPI" alt="PyPI version">
+  <a href="https://github.com/sakethdevx/ignyx/releases/">
+    <img src="https://img.shields.io/github/v/release/sakethdevx/ignyx?color=success&label=Release" alt="GitHub Release">
   </a>
   <a href="https://github.com/sakethdevx/ignyx/actions/workflows/release.yml">
     <img src="https://github.com/sakethdevx/ignyx/actions/workflows/release.yml/badge.svg" alt="Build Status">
   </a>
-  <a href="https://pypi.org/project/ignyx/">
-    <img src="https://img.shields.io/pypi/pyversions/ignyx.svg" alt="Supported Python versions">
+  <a href="https://github.com/sakethdevx/ignyx">
+    <img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Supported Python versions">
   </a>
   <a href="https://github.com/sakethdevx/ignyx/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/sakethdevx/ignyx" alt="License">
