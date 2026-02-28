@@ -1,85 +1,100 @@
 # Security
 
-Ignyx includes several utilities to help you secure your API endpoints with common authentication schemes like OAuth2, API Keys, and HTTP Basic authentication.
+Ignyx provides built-in utilities for handling common authentication and authorization patterns. These utilities integrate directly with the Dependency Injection system to provide a clean, typed interface for securing your endpoints.
 
 ## Overview
 
-Security utilities in Ignyx are designed to be used with the `Depends()` pattern. They extract credentials from the request (headers, cookies, or query params) and can be used to authenticate users before the route handler is executed.
+Security in Ignyx is handled via **Security Schemes**. These objects are used as dependencies with `Depends()`. When a security scheme is used:
+1. It automatically extracts credentials (tokens, keys, or credentials) from the request.
+2. It documents the security requirements in the auto-generated OpenAPI (Swagger) schema.
+3. It provides the extracted data directly to your route handler or high-level dependency.
 
-## OAuth2PasswordBearer
+## Basic Example
 
-This utility extracts a Bearer token from the `Authorization` header.
+Using `OAuth2PasswordBearer` to protect a route with a Bearer token.
 
 ```python
 from ignyx import Ignyx, Depends
 from ignyx.security import OAuth2PasswordBearer
 
 app = Ignyx()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+# tokenUrl is where the client should send username/password to get a token
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-@app.get("/items")
-def read_items(token: str = Depends(oauth2_scheme)):
+@app.get("/users/me")
+async def read_current_user(token: str = Depends(oauth2_scheme)):
     return {"token": token}
 ```
 
-## APIKeyHeader
+## Advanced Example
 
-Extract an API key from a custom header.
+Combining a security scheme with a high-level dependency to fetch a real User object from a database.
 
 ```python
+from typing import Optional
+from ignyx import Ignyx, Depends, HTTPException
 from ignyx.security import APIKeyHeader
+from pydantic import BaseModel
 
-api_key_header = APIKeyHeader(name="X-API-Key")
+app = Ignyx()
+api_key_scheme = APIKeyHeader(name="X-API-Key")
 
-@app.get("/secure-data")
-def get_secure_data(api_key: str = Depends(api_key_header)):
-    if api_key != "secret-key":
-        raise HTTPException(403, "Invalid API Key")
-    return {"data": "highly-sensitive"}
+class User(BaseModel):
+    username: str
+    is_admin: bool
+
+async def get_current_user(api_key: str = Depends(api_key_scheme)) -> User:
+    # In a real app, you would look this up in a database
+    if api_key == "top-secret-key":
+        return User(username="admin", is_admin=True)
+    
+    raise HTTPException(status_code=401, detail="Invalid API Key")
+
+@app.get("/admin/dashboard")
+async def admin_dashboard(user: User = Depends(get_current_user)):
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    return {"message": f"Welcome, {user.username}!"}
 ```
-
-## HTTPBasic
-
-Standard HTTP Basic authentication (Username/Password).
-
-```python
-from ignyx.security import HTTPBasic
-
-security = HTTPBasic()
-
-@app.get("/admin")
-def admin_panel(credentials = Depends(security)):
-    # credentials has .username and .password
-    return {"admin": credentials.username}
-```
-
-## Using with Depends()
-
-You typically wrap these security schemes in a higher-level dependency to fetch user data from a database.
-
-```python
-def get_current_user(token: str = Depends(oauth2_scheme)):
-    user = db.fetch_user_by_token(token)
-    if not user:
-        raise HTTPException(401, "Invalid credentials")
-    return user
-
-@app.get("/me")
-def me(user = Depends(get_current_user)):
-    return user
-```
-
-## Production HTTPS Note
-
-In production, you should **always** run your Ignyx application behind a TLS/SSL proxy (like Nginx, Caddy, or a Cloud Load Balancer) to ensure that credentials sent via headers are encrypted.
 
 ## API Reference
 
-### `OAuth2PasswordBearer(tokenUrl)`
-Extracts Bearer token from `Authorization` header.
+### `OAuth2PasswordBearer`
+- **Purpose**: Extracts a Bearer token from the `Authorization` header.
+- **Parameters**:
+    - `tokenUrl` (str): The URL that provides the token (used in Swagger UI).
+    - `auto_error` (bool): If `True`, automatically raises 401 if token is missing. Default `True`.
 
-### `APIKeyHeader(name)`
-Extracts value from the specified header.
+### `APIKeyHeader`
+- **Purpose**: Extracts an API key from a specific request header.
+- **Parameters**:
+    - `name` (str): The name of the header to check.
+    - `auto_error` (bool): If `True`, automatically raises 401 if header is missing. Default `True`.
 
-### `HTTPBasic()`
-Extracts and decodes Basic credentials.
+### `HTTPBasic`
+- **Purpose**: Extracts and decodes Username/Password from the `Authorization: Basic` header.
+- **Returns**: An object with `.username` and `.password` attributes.
+
+## Common Patterns
+
+### Chained Security
+You can create dependencies that require other dependencies, allowing you to build complex authorization logic. For example, `get_current_active_user` might depend on `get_current_user`.
+
+### Optional Security
+By setting `auto_error=False` on the security scheme, you can make authentication optional. The dependency will return `None` if the credentials are missing instead of raising an exception.
+
+```python
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
+
+@app.get("/")
+async def root(token: Optional[str] = Depends(oauth2_scheme)):
+    if token:
+        return {"message": "Logged in"}
+    return {"message": "Guest"}
+```
+
+## Notes & Gotchas
+
+- **Production Security**: Security utilities only extract and decode credentials. They do **not** verify tokens (like JWT signatures). That logic should be implemented in your dependency functions.
+- **HTTPS**: Always run Ignyx behind a TLS/SSL proxy (like Nginx) in production. Security schemes pass sensitive data in headers which must be encrypted.
+- **OpenAPI**: Using these built-in utilities ensures that the "Authorize" button in Swagger UI works correctly for your API.
