@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.2] - CI/CD Improvements
+## [2.1.0] - CI/CD Improvements
 ### Changed
 - Expanded CI matrix to Ubuntu, macOS, Windows × Python 3.12 + 3.13
 - Added cargo clippy (deny warnings) to CI lint job

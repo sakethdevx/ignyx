@@ -583,7 +583,7 @@ async fn handle_request(
                     let mut builder = HyperResponse::builder()
                         .status(status)
                         .header("content-type", &content_type)
-                        .header("server", "Ignyx/1.1.2");
+                        .header("server", "Ignyx/2.1.0");
 
                     if let Some(h) = custom_headers {
                         for (k, v) in h {
