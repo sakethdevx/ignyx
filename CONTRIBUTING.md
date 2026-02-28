@@ -2,7 +2,7 @@
 
 ## Development Environment Setup
 ```bash
-git clone <repository-url>
+git clone https://github.com/sakethdevx/ignyx.git
 cd ignyx
 python -m venv .venv
 source .venv/bin/activate
