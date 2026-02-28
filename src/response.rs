@@ -31,12 +31,14 @@ impl Response {
     /// Create a JSON response from a Python dict
     #[staticmethod]
     #[pyo3(signature = (data, status_code=None))]
-    pub fn json(py: Python<'_>, data: &Bound<'_, pyo3::types::PyAny>, status_code: Option<u16>) -> PyResult<Self> {
+    pub fn json(
+        py: Python<'_>,
+        data: &Bound<'_, pyo3::types::PyAny>,
+        status_code: Option<u16>,
+    ) -> PyResult<Self> {
         // Use Python's json.dumps for reliable serialization
         let json_mod = py.import("json")?;
-        let json_str: String = json_mod
-            .call_method1("dumps", (data,))?
-            .extract()?;
+        let json_str: String = json_mod.call_method1("dumps", (data,))?.extract()?;
         let mut headers = HashMap::new();
         headers.insert("content-type".to_string(), "application/json".to_string());
         Ok(Self {

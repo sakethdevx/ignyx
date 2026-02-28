@@ -3,8 +3,6 @@ OpenAPI schema generation and Swagger UI / ReDoc serving.
 Auto-generates OpenAPI 3.0 schema from registered routes.
 """
 
-import json
-from typing import Any, Optional
 
 
 SWAGGER_UI_HTML = """<!DOCTYPE html>

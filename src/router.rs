@@ -1,6 +1,6 @@
 use matchit::Router as MatchitRouter;
 use std::collections::HashMap;
-use std::sync::Arc;
+// use std::sync::Arc; // Removed unused
 
 /// HTTP methods we support
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -55,7 +55,7 @@ impl Router {
         let index = self.handler_count;
         self.handler_count += 1;
 
-        let tree = self.trees.entry(method).or_insert_with(MatchitRouter::new);
+        let tree = self.trees.entry(method).or_default();
         tree.insert(path, index)
             .map_err(|e| format!("Failed to insert route: {e}"))?;
 

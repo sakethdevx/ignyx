@@ -4,14 +4,14 @@ Provides an async WebSocket wrapper that mirrors Starlette's WebSocket API.
 """
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 
 class WebSocket:
     """
     Async WebSocket wrapper for Ignyx.
     Provides accept(), send_text(), receive_text(), send_json(), receive_json(), close().
-    
+
     The underlying transport is managed by the Rust server via callback functions
     that are injected when the WebSocket connection is established.
     """

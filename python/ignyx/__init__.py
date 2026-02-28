@@ -3,21 +3,23 @@ Ignyx — Ignite your API. Built in Rust, runs in Python.
 A high-performance Python web framework powered by Rust.
 """
 
-from ignyx.app import Ignyx
 from ignyx._core import Request, Response
-from ignyx.middleware import Middleware
-from ignyx.depends import Depends, BackgroundTask
-from ignyx.router import Router
-from ignyx.responses import (
-    JSONResponse, HTMLResponse, PlainTextResponse,
-    RedirectResponse, FileResponse
-)
-from ignyx.uploads import UploadFile
+from ignyx.app import Ignyx
+from ignyx.depends import BackgroundTask, Depends
 from ignyx.exceptions import HTTPException
-from ignyx.security import OAuth2PasswordBearer, APIKeyHeader, HTTPBasic
-from ignyx.testclient import TestClient
+from ignyx.middleware import AccessLogMiddleware, Middleware, RateLimitMiddleware
+from ignyx.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+)
+from ignyx.router import Router
+from ignyx.security import APIKeyHeader, HTTPBasic, OAuth2PasswordBearer
 from ignyx.staticfiles import StaticFiles
-from ignyx.middleware import RateLimitMiddleware, AccessLogMiddleware
+from ignyx.testclient import TestClient
+from ignyx.uploads import UploadFile
 
 __all__ = [
     "Ignyx",
@@ -42,4 +44,4 @@ __all__ = [
     "RateLimitMiddleware",
     "AccessLogMiddleware",
 ]
-__version__ = "1.1.1"
+__version__ = "1.1.2"

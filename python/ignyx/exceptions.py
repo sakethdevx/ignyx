@@ -3,6 +3,6 @@ class HTTPException(Exception):
         self.status_code = status_code
         self.detail = detail or ""
         self.headers = headers or {}
-        
+
     def __repr__(self):
         return f"HTTPException(status_code={self.status_code}, detail={self.detail!r})"

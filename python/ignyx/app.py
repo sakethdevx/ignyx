@@ -4,39 +4,39 @@ Provides FastAPI-like decorator syntax for defining routes.
 Integrates middleware, OpenAPI, dependency injection, and background tasks.
 """
 
-import json
 import inspect
-from typing import Any, Callable, Dict, List, Optional
-from ignyx._core import Server, Request, Response
-from ignyx.middleware import Middleware, ErrorHandlerMiddleware
-from ignyx.depends import Depends, BackgroundTask, resolve_dependencies
+import json
+from typing import Any, Callable, Optional
+
+from ignyx._core import Server
+from ignyx.middleware import ErrorHandlerMiddleware, Middleware
 from ignyx.openapi import (
-    generate_openapi_schema,
-    SWAGGER_UI_HTML,
     REDOC_HTML,
+    SWAGGER_UI_HTML,
+    generate_openapi_schema,
 )
 
 
 class Ignyx:
     """
     The main Ignyx application.
-    
+
     Usage:
         from ignyx import Ignyx
-        
+
         app = Ignyx()
-        
+
         @app.get("/")
         def hello():
             return {"message": "Ignyx is live"}
-        
+
         app.run(host="0.0.0.0", port=8000)
     """
 
     def __init__(
         self,
         title: str = "Ignyx",
-        version: str = "1.1.1",
+        version: str = "1.1.2",
         debug: bool = False,
         description: str = "",
         docs_url: str = "/docs",
@@ -59,7 +59,7 @@ class Ignyx:
         self._exception_handlers: dict = {}
         self._startup_handlers: list = []
         self._shutdown_handlers: list = []
-        
+
         from types import SimpleNamespace
         self.state = SimpleNamespace()
 
@@ -96,7 +96,6 @@ class Ignyx:
 
     def _create_dispatch(self, handler: Callable) -> Callable:
         from functools import wraps
-        import inspect
         if inspect.iscoroutinefunction(handler):
             @wraps(handler)
             async def async_dispatch(*args, **kw):
@@ -105,12 +104,14 @@ class Ignyx:
                     res = await handler(*args, **kw)
                     if hasattr(res, "status_code"):
                         handled = self._handle_exception(request, None, res.status_code)
-                        if handled: return handled
+                        if handled:
+                            return handled
                     return res
                 except Exception as exc:
                     status_code = getattr(exc, "status_code", 500)
                     handled = self._handle_exception(request, exc, status_code)
-                    if handled: return handled
+                    if handled:
+                        return handled
                     raise exc
             return async_dispatch
         else:
@@ -121,12 +122,14 @@ class Ignyx:
                     res = handler(*args, **kw)
                     if hasattr(res, "status_code"):
                         handled = self._handle_exception(request, None, res.status_code)
-                        if handled: return handled
+                        if handled:
+                            return handled
                     return res
                 except Exception as exc:
                     status_code = getattr(exc, "status_code", 500)
                     handled = self._handle_exception(request, exc, status_code)
-                    if handled: return handled
+                    if handled:
+                        return handled
                     raise exc
             return sync_dispatch
 
@@ -207,10 +210,10 @@ class Ignyx:
     def mount(self, path: str, app):
         """Mount a sub-application or static files handler."""
         mount_path = path.rstrip("/")
-        
+
         def static_handler(request, file_path: str = ""):
             return app(file_path)
-            
+
         # Register a catch-all route for the mounted path
         self._server.add_route("GET", mount_path + "/{*file_path}", static_handler)
 
@@ -228,7 +231,7 @@ class Ignyx:
     def _register_docs_routes(self):
         """Register the OpenAPI, Swagger UI, and ReDoc routes."""
         schema = self.openapi()
-        schema_json = json.dumps(schema)
+        json.dumps(schema)
 
         # OpenAPI JSON endpoint
         def openapi_json():
@@ -274,7 +277,7 @@ class Ignyx:
 
         # Build WebSocket route list for Rust
         ws_routes = [(ws["path"], ws["handler"]) for ws in self._ws_routes]
-        
+
         # Pass 404 handler to Rust
         def not_found_handler(request):
             res = self._handle_exception(request, None, 404)
@@ -282,12 +285,12 @@ class Ignyx:
                 return res
             from ignyx.responses import JSONResponse
             return JSONResponse({"error": "Not Found", "detail": "No route found"}, status_code=404)
-            
+
         import asyncio
         for handler in self._startup_handlers:
             if asyncio.iscoroutinefunction(handler):
                 asyncio.run(handler())
             else:
                 handler()
-                
+
         self._server.run(host, port, self._middlewares, ws_routes, not_found_handler, self._shutdown_handlers)

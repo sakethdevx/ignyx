@@ -1,15 +1,17 @@
-from ignyx.exceptions import HTTPException
 import base64
+
+from ignyx.exceptions import HTTPException
+
 
 class OAuth2PasswordBearer:
     def __init__(self, token_url: str):
         self.token_url = token_url
-        
+
     def __call__(self, request) -> str:
         auth = request.headers.get("authorization", "")
         if not auth.startswith("Bearer "):
             raise HTTPException(
-                401, 
+                401,
                 "Not authenticated",
                 headers={"WWW-Authenticate": "Bearer"}
             )
@@ -19,7 +21,7 @@ class APIKeyHeader:
     def __init__(self, name: str, auto_error: bool = True):
         self.name = name
         self.auto_error = auto_error
-        
+
     def __call__(self, request) -> str:
         key = request.headers.get(self.name.lower())
         if not key and self.auto_error:
@@ -31,7 +33,7 @@ class HTTPBasic:
         auth = request.headers.get("authorization", "")
         if not auth.startswith("Basic "):
             raise HTTPException(
-                401, 
+                401,
                 "Not authenticated",
                 headers={"WWW-Authenticate": "Basic"}
             )
@@ -39,6 +41,6 @@ class HTTPBasic:
             decoded = base64.b64decode(auth[6:]).decode("utf-8")
         except Exception:
             raise HTTPException(401, "Invalid authentication credentials")
-        
+
         username, _, password = decoded.partition(":")
         return {"username": username, "password": password}

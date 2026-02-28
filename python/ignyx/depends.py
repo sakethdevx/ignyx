@@ -3,15 +3,15 @@ Dependency injection system for Ignyx.
 Inspired by FastAPI's Depends() pattern.
 """
 
-from typing import Any, Callable, Optional
-import inspect
 import concurrent.futures
+import inspect
+from typing import Any, Callable, Optional
 
 
 class Depends:
     """
     Declare a dependency for a route handler.
-    
+
     Usage:
         def get_db():
             db = Database()
@@ -19,7 +19,7 @@ class Depends:
                 yield db
             finally:
                 db.close()
-        
+
         @app.get("/users")
         def get_users(db = Depends(get_db)):
             return db.query("SELECT * FROM users")
@@ -36,12 +36,12 @@ class Depends:
 class BackgroundTask:
     """
     A task to be run after the response is sent.
-    
+
     Usage:
         def send_email(to: str, subject: str):
             # ... send email logic ...
             pass
-        
+
         @app.post("/register")
         def register(task: BackgroundTask):
             task.add(send_email, "user@example.com", "Welcome!")
@@ -59,8 +59,7 @@ class BackgroundTask:
 
     def execute(self):
         """Execute all pending background tasks sequentially."""
-        import concurrent.futures
-        
+
         for func, args, kwargs in self._tasks:
             try:
                 if inspect.iscoroutinefunction(func):
@@ -98,7 +97,7 @@ def resolve_dependencies(handler: Callable, request: Any = None, overrides: dict
     overrides = overrides or {}
     if cache is None:
         cache = {}
-        
+
     sig = inspect.signature(handler)
     resolved = {}
 
@@ -106,24 +105,24 @@ def resolve_dependencies(handler: Callable, request: Any = None, overrides: dict
         if isinstance(param.default, Depends):
             dep = param.default
             func = dep.dependency
-            
+
             if func in overrides:
                 resolved[name] = overrides[func]
                 continue
-            
+
             if dep.use_cache and func in cache:
                 resolved[name] = cache[func]
                 continue
-            
+
             # Resolve inner dependencies (recursion)
             inner_deps = resolve_dependencies(func, request, overrides, cache)
-            
+
             # Call the dependency with resolved inner dependencies and optional request
             dep_sig = inspect.signature(func)
             kwargs = inner_deps.copy()
             if "request" in dep_sig.parameters and "request" not in kwargs:
                 kwargs["request"] = request
-                
+
             result = func(**kwargs)
             if inspect.isgenerator(result):
                 # Generator-based dependency (with cleanup)
@@ -131,9 +130,9 @@ def resolve_dependencies(handler: Callable, request: Any = None, overrides: dict
                 # Note: Cleanup (yield) is not yet supported in this simple sync implementation
             else:
                 value = result
-            
+
             if dep.use_cache:
                 cache[func] = value
             resolved[name] = value
-            
+
     return resolved

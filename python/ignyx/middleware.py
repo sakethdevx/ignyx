@@ -3,28 +3,27 @@ Middleware system for Ignyx.
 Supports before, after, and error middleware.
 """
 
-from typing import Any, Callable, Optional
-import traceback
-import json
 import time
+import traceback
 from collections import defaultdict
+from typing import Any, Optional
 
 
 class Middleware:
     """
     Base middleware class. Subclass this and override
     before_request, after_request, or on_error.
-    
+
     Usage:
         class LoggingMiddleware(Middleware):
             async def before_request(self, request):
                 print(f"Request: {request.method} {request.path}")
                 return request
-            
+
             async def after_request(self, request, response):
                 print(f"Response: {response.status_code}")
                 return response
-        
+
         app.add_middleware(LoggingMiddleware())
     """
 
@@ -44,7 +43,7 @@ class Middleware:
 class CORSMiddleware(Middleware):
     """
     CORS middleware for cross-origin requests.
-    
+
     Usage:
         app.add_middleware(CORSMiddleware(
             allow_origins=["*"],
@@ -69,11 +68,11 @@ class CORSMiddleware(Middleware):
 
     def after_request(self, request, response):
         # We need to ensure we return a tuple of (body, status, headers)
-        
+
         body = response
         status = 200
         headers = {}
-        
+
         if isinstance(response, tuple):
             body = response[0]
             status = response[1] if len(response) > 1 else 200
@@ -90,7 +89,7 @@ class CORSMiddleware(Middleware):
         if self.allow_credentials:
             headers["access-control-allow-credentials"] = "true"
         headers["access-control-max-age"] = str(self.max_age)
-        
+
         return (body, status, headers)
 
 
@@ -129,15 +128,15 @@ class RateLimitMiddleware(Middleware):
         ip = request.headers.get("x-forwarded-for") or request.headers.get("x-real-ip") or "unknown"
         now = time.monotonic()
         self._store[ip] = [t for t in self._store[ip] if now - t < self.window]
-        
+
         if len(self._store[ip]) >= self.max_requests:
             from ignyx.exceptions import HTTPException
             raise HTTPException(
-                429, 
+                429,
                 "Rate limit exceeded",
                 headers={"Retry-After": str(self.window)}
             )
-            
+
         self._store[ip].append(now)
         return request
 
@@ -153,12 +152,12 @@ class AccessLogMiddleware(Middleware):
     def after_request(self, request, response):
         start = getattr(request, "_ignyx_start", time.monotonic())
         duration = (time.monotonic() - start) * 1000
-        
+
         status = 200
         if hasattr(response, "status_code"):
             status = response.status_code
         elif isinstance(response, tuple) and len(response) > 1:
             status = response[1]
-            
+
         self.logger.info(f"{request.method} {request.path} {status} {duration:.1f}ms")
         return response

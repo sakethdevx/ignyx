@@ -1,16 +1,17 @@
 from typing import Any, Callable, List, Tuple
 
+
 class Router:
     """
     A router for organizing and grouping Ignyx API endpoints.
-    
+
     Usage:
         router = Router(prefix="/api/v1")
-        
+
         @router.get("/users")
         def get_users():
             ...
-            
+
         app.include_router(router)
     """
     def __init__(self, prefix: str = "") -> None:

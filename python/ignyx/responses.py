@@ -1,6 +1,7 @@
 import os
 from typing import Any, Dict, Optional
 
+
 class BaseResponse:
     """
     Base class for all Ignyx responses.
@@ -15,13 +16,13 @@ class BaseResponse:
         return self.content
 
     def set_cookie(
-        self, 
-        key: str, 
-        value: str, 
+        self,
+        key: str,
+        value: str,
         max_age: Optional[int] = None,
-        httponly: bool = False, 
+        httponly: bool = False,
         secure: bool = False,
-        samesite: str = "lax", 
+        samesite: str = "lax",
         path: str = "/"
     ) -> None:
         """Set a cookie on the response."""
@@ -85,10 +86,10 @@ class FileResponse(BaseResponse):
     Returns a file attachment response.
     """
     def __init__(
-        self, 
-        path: str, 
-        filename: Optional[str] = None, 
-        status_code: int = 200, 
+        self,
+        path: str,
+        filename: Optional[str] = None,
+        status_code: int = 200,
         headers: Optional[Dict[str, str]] = None
     ) -> None:
         super().__init__("", status_code, headers)
@@ -98,14 +99,13 @@ class FileResponse(BaseResponse):
         self.headers["content-disposition"] = f'attachment; filename="{self.filename}"'
 
     def render(self) -> bytes:
-        import os
         # Safety rail: Prevent OOM crashes by capping in-memory file serving to 10MB
-        max_size = 10 * 1024 * 1024 
+        max_size = 10 * 1024 * 1024
         if os.path.exists(self.path) and os.path.getsize(self.path) > max_size:
             raise RuntimeError(
                 f"File '{self.filename}' exceeds the 10MB limit for FileResponse. "
                 "Large file streaming support is planned for Ignyx v0.3.0."
             )
-            
+
         with open(self.path, "rb") as f:
             return f.read()

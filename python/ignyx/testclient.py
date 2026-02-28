@@ -1,7 +1,9 @@
+import json
 import threading
 import time
-import json
+
 import httpx
+
 
 class TestResponse:
     def __init__(self, status_code, body, headers):
@@ -9,7 +11,7 @@ class TestResponse:
         self._body = body
         self.headers = headers
         self.text = body if isinstance(body, str) else body.decode("utf-8", errors="replace")
-        
+
     def json(self):
         return json.loads(self.text)
 
@@ -27,7 +29,7 @@ class TestClient:
             target=lambda: app.run(host="127.0.0.1", port=port), daemon=True
         )
         self._thread.start()
-        
+
         # Poll until server is up
         for _ in range(30):
             try:

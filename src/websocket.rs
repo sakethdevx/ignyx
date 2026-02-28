@@ -1,14 +1,14 @@
 use pyo3::prelude::*;
 use std::sync::Arc;
-use tokio::net::TcpStream;
-use hyper::{Request as HyperRequest, Response as HyperResponse};
-use hyper::body::Incoming;
+// use tokio::net::TcpStream; // Removed unused
+use crate::server::ServerState;
 use bytes::Bytes;
-use http_body_util::Full;
-use std::convert::Infallible;
 use futures_util::{SinkExt, StreamExt};
+use http_body_util::Full;
+use hyper::body::Incoming;
+use hyper::{Request as HyperRequest, Response as HyperResponse};
+use std::convert::Infallible;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
-use crate::server::{ServerState, ASYNCIO_LOOP};
 
 pub(crate) async fn handle_websocket(
     req: HyperRequest<Incoming>,
@@ -23,16 +23,18 @@ pub(crate) async fn handle_websocket(
         }
         None
     });
-    
+
     if let Some(handler) = ws_handler_clone {
         // Extract the WebSocket accept key BEFORE moving req
-        let ws_key = req.headers()
+        let ws_key = req
+            .headers()
             .get("sec-websocket-key")
             .map(|v| v.to_str().unwrap_or("").to_string())
             .unwrap_or_default();
-        
+
         // Use tungstenite's built-in accept key derivation (RFC 6455 compliant)
-        let accept_value = tokio_tungstenite::tungstenite::handshake::derive_accept_key(ws_key.as_bytes());
+        let accept_value =
+            tokio_tungstenite::tungstenite::handshake::derive_accept_key(ws_key.as_bytes());
 
         // Spawn the WebSocket upgrade task (runs AFTER we return the 101 response)
         tokio::task::spawn(async move {
@@ -43,7 +45,8 @@ pub(crate) async fn handle_websocket(
                         io,
                         tokio_tungstenite::tungstenite::protocol::Role::Server,
                         None,
-                    ).await;
+                    )
+                    .await;
 
                     let (mut ws_write, mut ws_read) = ws_stream.split();
 
@@ -60,7 +63,7 @@ pub(crate) async fn handle_websocket(
                                 msg = send_rx.recv() => {
                                     match msg {
                                         Some(text) => {
-                                            if ws_write.send(WsMessage::Text(text.into())).await.is_err() {
+                                            if ws_write.send(WsMessage::Text(text)).await.is_err() {
                                                 break;
                                             }
                                         }
@@ -112,7 +115,7 @@ pub(crate) async fn handle_websocket(
                                             if !set_loop_fn.is_none(py) {
                                                 let _ = set_loop_fn.bind(py).call1((&new_loop,));
                                             }
-                                            if let Ok(run_method) = new_loop.getattr("run_until_complete") {
+                                            if let Ok(run_method) = new_loop.getattr::<&str>("run_until_complete") {
                                                 *loop_ref = Some((new_loop.unbind(), run_method.unbind()));
                                             }
                                         }
@@ -182,7 +185,7 @@ pub(crate) async fn handle_websocket(
                                                     if let Some(ref cached) = *cell.borrow() {
                                                         let _ = cached.1.bind(py).call1((&coro,));
                                                     } else if let Some(asyncio_mod) = &state_clone.asyncio_mod {
-                                                        let _ = asyncio_mod.bind(py).call_method1("run", (&coro,));
+                                                        let _ = asyncio_mod.bind(py).call_method1::<&str, _>("run", (&coro,));
                                                     }
                                                 });
                                             }
@@ -215,7 +218,7 @@ pub(crate) async fn handle_websocket(
 
         return Ok(response);
     }
-    
+
     // Fallback: This is not actually reached when called properly, but needed for types.
     let response = HyperResponse::builder()
         .status(404)

@@ -1,6 +1,8 @@
 import json
 from collections import UserDict
+
 from ignyx._core import Request as _RustRequest
+
 
 class Headers(UserDict):
     """Case-insensitive dictionary for HTTP headers."""
@@ -26,13 +28,13 @@ class Request:
     """
     def __init__(self, rust_req: _RustRequest):
         self._rust_req = rust_req
-        
+
         # Parse JSON blocks eagerly to native Python dictionaries
         raw_headers = json.loads(rust_req.headers) if isinstance(rust_req.headers, str) else {}
         self.headers = Headers(raw_headers)
         self.query_params = json.loads(rust_req.query_params) if isinstance(rust_req.query_params, str) else {}
         self.path_params = json.loads(rust_req.path_params) if isinstance(rust_req.path_params, str) else {}
-        
+
         self.method = rust_req.method
         self.path = rust_req.path
         self._body_bytes = rust_req.body

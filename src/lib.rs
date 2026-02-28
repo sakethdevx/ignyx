@@ -1,12 +1,12 @@
-mod server;
 mod handler;
-mod websocket;
 mod middleware;
 mod multipart;
 mod pyref;
-mod router;
 mod request;
 mod response;
+mod router;
+mod server;
+mod websocket;
 
 use pyo3::prelude::*;
 
