@@ -6,6 +6,8 @@ Supports before, after, and error middleware.
 from typing import Any, Callable, Optional
 import traceback
 import json
+import time
+from collections import defaultdict
 
 
 class Middleware:
@@ -111,6 +113,49 @@ class ErrorHandlerMiddleware(Middleware):
             }, 500
         else:
             return {
-                "error": "Internal Server Error",
                 "detail": "An unexpected error occurred",
             }, 500
+
+class RateLimitMiddleware(Middleware):
+    def __init__(self, requests: int = 100, window: int = 60):
+        self.max_requests = requests
+        self.window = window
+        self._store: dict = defaultdict(list)
+
+    def before_request(self, request):
+        ip = request.headers.get("x-forwarded-for") or request.headers.get("x-real-ip") or "unknown"
+        now = time.monotonic()
+        self._store[ip] = [t for t in self._store[ip] if now - t < self.window]
+        
+        if len(self._store[ip]) >= self.max_requests:
+            from ignyx.exceptions import HTTPException
+            raise HTTPException(
+                429, 
+                "Rate limit exceeded",
+                headers={"Retry-After": str(self.window)}
+            )
+            
+        self._store[ip].append(now)
+        return request
+
+class AccessLogMiddleware(Middleware):
+    def __init__(self, logger_name: str = "ignyx.access"):
+        import logging
+        self.logger = logging.getLogger(logger_name)
+
+    def before_request(self, request):
+        request._ignyx_start = time.monotonic()
+        return request
+
+    def after_request(self, request, response):
+        start = getattr(request, "_ignyx_start", time.monotonic())
+        duration = (time.monotonic() - start) * 1000
+        
+        status = 200
+        if hasattr(response, "status_code"):
+            status = response.status_code
+        elif isinstance(response, tuple) and len(response) > 1:
+            status = response[1]
+            
+        self.logger.info(f"{request.method} {request.path} {status} {duration:.1f}ms")
+        return response

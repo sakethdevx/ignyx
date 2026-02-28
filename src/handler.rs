@@ -314,6 +314,35 @@ pub(crate) fn call_python_handler(
             if let Some(res) = error_response {
                 res
             } else {
+                if let Ok(exceptions_mod) = py.import("ignyx.exceptions") {
+                    if let Ok(http_exc_class) = exceptions_mod.getattr("HTTPException") {
+                        if err.value(py).is_instance(&http_exc_class).unwrap_or(false) {
+                            let exc_obj = err.value(py);
+                            let status_code: u16 = exc_obj.getattr("status_code").and_then(|v| v.extract()).unwrap_or(500);
+                            
+                            // Get detail, maybe None
+                            let detail = exc_obj.getattr("detail").map(|v| v.to_string()).unwrap_or_else(|_| "".to_string());
+                            
+                            let mut custom_headers = None;
+                            if let Ok(headers_obj) = exc_obj.getattr("headers") {
+                                if let Ok(headers_dict) = headers_obj.downcast::<PyDict>() {
+                                    let mut hmap = HashMap::new();
+                                    for (k, v) in headers_dict {
+                                        if let (Ok(ks), Ok(vs)) = (k.extract::<String>(), v.extract::<String>()) {
+                                            hmap.insert(ks, vs);
+                                        }
+                                    }
+                                    if !hmap.is_empty() {
+                                        custom_headers = Some(hmap);
+                                    }
+                                }
+                            }
+                            
+                            let error_body = serde_json::json!({"detail": detail}).to_string();
+                            return Ok((error_body, "application/json".to_string(), status_code, custom_headers, None));
+                        }
+                    }
+                }
                 return Err(err);
             }
         }

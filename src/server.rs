@@ -28,10 +28,11 @@ use crate::handler::HandlerSignature;
 /// Shared state for the async server.
 pub struct ServerState {
     pub router: Router,
-    handlers: Vec<HandlerSignature>,
+    pub handlers: Vec<HandlerSignature>,
     pub middlewares: Vec<PyObject>,
     pub ws_routes: Vec<(String, PyObject)>,
     pub not_found_handler: Option<PyObject>,
+    pub shutdown_handlers: Vec<PyObject>,
     pub py_refs: crate::pyref::PythonCachedRefs,
     pub asyncio_mod: Option<PyObject>,
 }
@@ -76,7 +77,8 @@ impl Server {
     }
 
     /// Start the HTTP server. This blocks the calling thread.
-    pub fn run(&self, py: Python<'_>, host: &str, port: u16, middlewares: Vec<PyObject>, ws_routes: Vec<(String, PyObject)>, not_found_handler: Option<PyObject>) -> PyResult<()> {
+    #[pyo3(signature = (host, port, middlewares, ws_routes, not_found_handler, shutdown_handlers))]
+    pub fn run(&self, py: Python<'_>, host: &str, port: u16, middlewares: Vec<PyObject>, ws_routes: Vec<(String, PyObject)>, not_found_handler: Option<PyObject>, shutdown_handlers: Vec<PyObject>) -> PyResult<()> {
         let addr: SocketAddr = format!("{host}:{port}")
             .parse()
             .map_err(|e: std::net::AddrParseError| {
@@ -229,6 +231,7 @@ impl Server {
             middlewares,
             ws_routes,
             not_found_handler,
+            shutdown_handlers,
             py_refs: crate::pyref::PythonCachedRefs {
                 request_class: req_proxy_class.unwrap_or_else(|| py.None()),
                 json_dumps: json_dumps.unwrap_or_else(|| py.None()),
@@ -273,42 +276,78 @@ async fn run_server(
     let listener = TcpListener::bind(addr).await?;
     let has_ws = !state.ws_routes.is_empty();
 
-    loop {
-        let (stream, _) = listener.accept().await?;
-        let io = hyper_util::rt::TokioIo::new(stream);
-        let state = state.clone();
+    let state_for_signal = state.clone();
 
-        if has_ws {
-            // WebSocket-capable connection handler (with upgrade support)
-            tokio::task::spawn(async move {
-                if let Err(_err) = http1::Builder::new()
-                    .serve_connection(
-                        io,
-                        service_fn(move |req| {
-                            let state = state.clone();
-                            async move { handle_request(req, state).await }
-                        }),
-                    )
-                    .with_upgrades()
-                    .await
-                {
+    tokio::select! {
+        res = async {
+            loop {
+                let (stream, _) = listener.accept().await?;
+                let io = hyper_util::rt::TokioIo::new(stream);
+                let state_clone = state.clone();
+
+                if has_ws {
+                    // WebSocket-capable connection handler (with upgrade support)
+                    tokio::task::spawn(async move {
+                        if let Err(_err) = http1::Builder::new()
+                            .serve_connection(
+                                io,
+                                service_fn(move |req| {
+                                    let state = state_clone.clone();
+                                    async move { handle_request(req, state).await }
+                                }),
+                            )
+                            .with_upgrades()
+                            .await
+                        {
+                        }
+                    });
+                } else {
+                    // Fast path: no WebSocket routes, skip upgrade overhead
+                    tokio::task::spawn(async move {
+                        if let Err(_err) = http1::Builder::new()
+                            .serve_connection(
+                                io,
+                                service_fn(move |req| {
+                                    let state = state_clone.clone();
+                                    async move { handle_request(req, state).await }
+                                }),
+                            )
+                            .await
+                        {
+                        }
+                    });
                 }
-            });
-        } else {
-            // Fast path: no WebSocket routes, skip upgrade overhead
-            tokio::task::spawn(async move {
-                if let Err(_err) = http1::Builder::new()
-                    .serve_connection(
-                        io,
-                        service_fn(move |req| {
-                            let state = state.clone();
-                            async move { handle_request(req, state).await }
-                        }),
-                    )
-                    .await
-                {
-                }
-            });
+            }
+            #[allow(unreachable_code)]
+            Ok::<_, Box<dyn std::error::Error + Send + Sync>>(())
+        } => res,
+        
+        _ = tokio::signal::ctrl_c() => {
+            println!("\\nShutting down Ignyx server...");
+            if !state_for_signal.shutdown_handlers.is_empty() {
+                let bg_state = state_for_signal.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    Python::with_gil(|py| {
+                        let asyncio = py.import("asyncio").ok();
+                        for handler in &bg_state.shutdown_handlers {
+                            let is_coro = py.import("inspect")
+                                .and_then(|m| m.call_method1("iscoroutinefunction", (handler,)))
+                                .and_then(|v| v.extract::<bool>())
+                                .unwrap_or(false);
+                            if is_coro {
+                                if let Some(asyncio_mod) = &asyncio {
+                                    if let Ok(coro) = handler.call0(py) {
+                                        let _ = asyncio_mod.call_method1("run", (coro,));
+                                    }
+                                }
+                            } else {
+                                let _ = handler.call0(py);
+                            }
+                        }
+                    });
+                }).await;
+            }
+            Ok(())
         }
     }
 }
@@ -398,7 +437,7 @@ async fn handle_request(
             let mut builder = HyperResponse::builder()
                 .status(200)
                 .header("content-type", "text/plain")
-                .header("server", "Ignyx/1.0.6");
+                .header("server", "Ignyx/1.1.0");
                 
             if let Some(h) = custom_headers {
                 for (k, v) in h {
@@ -492,7 +531,7 @@ async fn handle_request(
                     let mut builder = HyperResponse::builder()
                         .status(status)
                         .header("content-type", &content_type)
-                        .header("server", "Ignyx/1.0.6");
+                        .header("server", "Ignyx/1.1.0");
                         
                     if let Some(h) = custom_headers {
                         for (k, v) in h {
@@ -505,8 +544,10 @@ async fn handle_request(
                     // If there's a background task, spawn it to run AFTER response
                     if let Some(task) = bg_task {
                         tokio::spawn(async move {
-                            // Delay by 150ms to ensure the HTTP response flushes to the client first
-                            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                            // TODO: Replace this sleep with proper tokio::sync::oneshot flush signaling 
+                            // once we implement a custom http_body wrapper.
+                            // Delay by 500ms to ensure the HTTP response flushes to the client first.
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                             tokio::task::spawn_blocking(move || {
                                 Python::with_gil(|py| {
                                     // BackgroundTask executes synchronous functions locally right now
@@ -528,7 +569,7 @@ async fn handle_request(
                     let response = HyperResponse::builder()
                         .status(500)
                         .header("content-type", "application/json")
-                        .header("server", "Ignyx/1.0.6")
+                        .header("server", "Ignyx/1.1.0")
                         .body(Full::new(Bytes::from(error_body)))
                         .unwrap();
                     return Ok(response);
@@ -578,7 +619,7 @@ async fn handle_request(
                 let mut builder = HyperResponse::builder()
                     .status(status)
                     .header("content-type", &content_type)
-                    .header("server", "Ignyx/1.0.6");
+                    .header("server", "Ignyx/1.1.0");
                     
                 if let Some(h) = custom_headers {
                     for (k, v) in h {
@@ -613,11 +654,9 @@ async fn handle_request(
     let response = HyperResponse::builder()
         .status(404)
         .header("content-type", "application/json")
-        .header("server", "Ignyx/1.0.6")
+        .header("server", "Ignyx/1.1.0")
         .body(Full::new(Bytes::from(body)))
         .unwrap();
 
     Ok(response)
 }
-
-

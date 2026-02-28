@@ -36,7 +36,7 @@ class Ignyx:
     def __init__(
         self,
         title: str = "Ignyx",
-        version: str = "1.0.6",
+        version: str = "1.1.0",
         debug: bool = False,
         description: str = "",
         docs_url: str = "/docs",
@@ -57,6 +57,11 @@ class Ignyx:
         self.openapi_url = openapi_url
         self._openapi_schema: Optional[dict] = None
         self._exception_handlers: dict = {}
+        self._startup_handlers: list = []
+        self._shutdown_handlers: list = []
+        
+        from types import SimpleNamespace
+        self.state = SimpleNamespace()
 
         # Catch-all routes removed. 404 is now handled in server.rs by calling not_found_handler.
 
@@ -68,6 +73,16 @@ class Ignyx:
             self._exception_handlers[status_code_or_exc] = func
             return func
         return decorator
+
+    def on_startup(self, func):
+        """Register a function to run before the server starts."""
+        self._startup_handlers.append(func)
+        return func
+
+    def on_shutdown(self, func):
+        """Register a function to run when the server shuts down."""
+        self._shutdown_handlers.append(func)
+        return func
 
     def _handle_exception(self, request, exc, status_code):
         # Check exception type
@@ -184,6 +199,16 @@ class Ignyx:
             return func
         return decorator
 
+    def mount(self, path: str, app):
+        """Mount a sub-application or static files handler."""
+        mount_path = path.rstrip("/")
+        
+        def static_handler(request, file_path: str = ""):
+            return app(file_path)
+            
+        # Register a catch-all route for the mounted path
+        self._server.add_route("GET", mount_path + "/{*file_path}", static_handler)
+
     def openapi(self) -> dict:
         """Get the OpenAPI schema, generating it if needed."""
         if self._openapi_schema is None:
@@ -253,4 +278,11 @@ class Ignyx:
             from ignyx.responses import JSONResponse
             return JSONResponse({"error": "Not Found", "detail": "No route found"}, status_code=404)
             
-        self._server.run(host, port, self._middlewares, ws_routes, not_found_handler)
+        import asyncio
+        for handler in self._startup_handlers:
+            if asyncio.iscoroutinefunction(handler):
+                asyncio.run(handler())
+            else:
+                handler()
+                
+        self._server.run(host, port, self._middlewares, ws_routes, not_found_handler, self._shutdown_handlers)

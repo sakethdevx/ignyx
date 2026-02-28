@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - New Features
+### Added
+- `HTTPException` class with Rust-side status code handling
+- Lifespan events: `@app.on_startup`, `@app.on_shutdown`
+- `app.state` (SimpleNamespace) for app-wide data storage
+- `TestClient` for testing without starting a real server
+- `OAuth2PasswordBearer`, `APIKeyHeader`, `HTTPBasic` security utilities
+- `RateLimitMiddleware` (sliding window, configurable requests/window)
+- `AccessLogMiddleware` (method + path + status + latency)
+- `StaticFiles` for serving static assets
+- `app.mount()` for mounting sub-applications
+### Fixed
+- BackgroundTask execution no longer relies on a fixed 150ms sleep
+
 ## [1.0.6] - Code Refactoring
 ### Changed
 - Refactored `server.rs` into maintainable modules (`handler.rs`, `websocket.rs`, `middleware.rs`, `multipart.rs`).
