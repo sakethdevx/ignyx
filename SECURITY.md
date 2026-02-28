@@ -3,7 +3,8 @@
 ## Supported Versions
 | Version | Supported          |
 | ------- | ------------------ |
-| v1.0.x  | :white_check_mark: |
+| v2.x    | :white_check_mark: |
+| v1.x    | :x:                |
 
 ## How to Report
 Please email security vulnerabilities privately. Do not open public issues for security concerns.
