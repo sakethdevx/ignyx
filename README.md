@@ -202,16 +202,13 @@ app.include_router(api_router)
 | Modular Routers        | ✅    | ✅      |
 | Performance (req/s)    | ~50k  | ~6k     |
 | ASGI overhead          | ❌ None | ✅ Yes |
-| TestClient             | ⚠️ WIP | ✅     |
-| Static file serving    | ⚠️ WIP | ✅     |
-| Lifespan events        | ⚠️ WIP | ✅     |
+| TestClient             | ✅ | ✅     |
+| Static file serving    | ✅ | ✅     |
+| Lifespan events        | ✅ | ✅     |
 | Exception handlers     | ✅    | ✅      |
 
 ## Current Limitations
 
-- No TestClient yet (use `httpx` directly against a running server for now)
-- No static file serving via `app.mount()` yet
-- No lifespan events (startup/shutdown) yet
 - Hot reloading not yet implemented
 - OpenAPI schema is basic (no Pydantic response schemas yet)
 
