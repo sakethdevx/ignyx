@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - Documentation
+### Added
+- Full docs for dependency_injection, middleware, request, response
+- New pages: testing, security, static_files, lifespan, error_handling
+- Expanded docs for routing, websockets, validation, deployment
+### Changed
+- Updated mkdocs.yml navigation to include all pages
+- Added code copy button and search suggestions to MkDocs theme
+
 ## [2.1.0] - CI/CD Improvements
 ### Changed
 - Expanded CI matrix to Ubuntu, macOS, Windows × Python 3.12 + 3.13
