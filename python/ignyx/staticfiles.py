@@ -11,8 +11,7 @@ class StaticFiles:
     def __call__(self, path: str = ""):
         full_path = os.path.normpath(os.path.join(self.directory, path.lstrip("/")))
         
-        # Security: prevent path traversal OUTSIDE the directory
-        if not full_path.startswith(self.directory):
+        if not full_path.startswith(self.directory) or ".." in path:
             raise HTTPException(403, "Forbidden")
             
         if os.path.isdir(full_path) and self.html:

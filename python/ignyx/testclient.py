@@ -15,13 +15,28 @@ class TestResponse:
 
 class TestClient:
     def __init__(self, app):
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("", 0))
+        port = s.getsockname()[1]
+        s.close()
+
         self._app = app
-        self._base = "http://127.0.0.1:19876"
+        self._base = f"http://127.0.0.1:{port}"
         self._thread = threading.Thread(
-            target=lambda: app.run(host="127.0.0.1", port=19876), daemon=True
+            target=lambda: app.run(host="127.0.0.1", port=port), daemon=True
         )
         self._thread.start()
-        time.sleep(1.5)  # wait for server to start
+        
+        # Poll until server is up
+        for _ in range(30):
+            try:
+                # Use a raw socket to test if port is bound instead of httpx
+                # to avoid logging 404/500 if we hit an endpoint.
+                with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                    break
+            except (ConnectionRefusedError, TimeoutError, OSError):
+                time.sleep(0.1)
 
     def _request(self, method, path, **kwargs):
         resp = httpx.request(method, self._base + path, **kwargs)

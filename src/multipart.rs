@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use bytes::Bytes;
-use futures_util::stream::StreamExt;
+// use futures_util::stream::StreamExt; // Removed unused
 
 pub(crate) async fn parse_multipart(
     content_type: &str,
@@ -14,7 +14,7 @@ pub(crate) async fn parse_multipart(
             Ok::<Bytes, std::convert::Infallible>(Bytes::from(bytes_clone))
         });
         let mut multipart = multer::Multipart::new(stream, boundary);
-        while let Some(mut field) = multipart.next_field().await.unwrap_or(None) {
+        while let Some(field) = multipart.next_field().await.unwrap_or(None) {
             let name = field.name().unwrap_or("").to_string();
             if let Some(filename_ref) = field.file_name() {
                 let filename = filename_ref.to_string();

@@ -36,7 +36,7 @@ class Ignyx:
     def __init__(
         self,
         title: str = "Ignyx",
-        version: str = "1.1.0",
+        version: str = "1.1.1",
         debug: bool = False,
         description: str = "",
         docs_url: str = "/docs",
@@ -108,7 +108,8 @@ class Ignyx:
                         if handled: return handled
                     return res
                 except Exception as exc:
-                    handled = self._handle_exception(request, exc, 500)
+                    status_code = getattr(exc, "status_code", 500)
+                    handled = self._handle_exception(request, exc, status_code)
                     if handled: return handled
                     raise exc
             return async_dispatch
@@ -123,14 +124,15 @@ class Ignyx:
                         if handled: return handled
                     return res
                 except Exception as exc:
-                    handled = self._handle_exception(request, exc, 500)
+                    status_code = getattr(exc, "status_code", 500)
+                    handled = self._handle_exception(request, exc, status_code)
                     if handled: return handled
                     raise exc
             return sync_dispatch
 
-    def add_middleware(self, middleware: Middleware):
+    def add_middleware(self, middleware: Any) -> None:
         """Add a middleware to the application."""
-        self._middlewares.insert(0, middleware)  # Prepend so user middleware runs first
+        self._middlewares.append(middleware)
 
     def _add_route(self, method: str, path: str, handler: Callable, **kwargs) -> Callable:
         """Register a route handler."""
@@ -140,9 +142,12 @@ class Ignyx:
             "method": method,
             "path": path,
             "handler": handler,
-            "name": handler.__name__,
+            "name": getattr(handler, "__name__", "unknown"),
             **kwargs,
         })
+        if method != "OPTIONS" and not any(r["path"] == path and r["method"] == "OPTIONS" for r in self._routes):
+            self._server.add_route("OPTIONS", path, self._create_dispatch(lambda request: ""))
+            self._routes.append({"method": "OPTIONS", "path": path, "handler": lambda req: "", "name": "options"})
         return handler
 
     def include_router(self, router):

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - Test Suite Expansion & Core Fixes
+### Changed
+- Rewrote `conftest.py` to use `TestClient` (removed 2-second sleep antipattern)
+- Switched `add_middleware` to append instead of prepend to ensure addition order matches execution order
+### Added
+- `test_middleware.py` — CORS, rate limiting, middleware ordering
+- `test_dependencies.py` — `Depends()`, `BackgroundTask`
+- `test_security.py` — OAuth2, APIKey, HTTPBasic
+- `test_exceptions.py` — `HTTPException`, custom handlers
+- `test_lifespan.py` — startup/shutdown, `app.state`
+- `test_openapi.py` — schema generation, Swagger UI, ReDoc
+- `test_static.py` — static file serving
+- `pytest-cov` for coverage measurement
+### Fixed
+- **Pydantic Validation:** Correctly return 422 Unprocessable Entity for schema validation errors (previously 500)
+- **Response Headers:** Fixed missing headers in `BaseResponse` objects and enabled merging with tuple-provided headers
+- **FileResponse:** Resolved double-quoting/serialization issues with raw bytes in `FileResponse`
+- **BackgroundTask:** Fixed initialization crash when passing initial tasks to the constructor
+- **Dependency Injection:** Fixed `BackgroundTask` and `Request` injection into sub-dependencies
+- **Static files:** Hardened path traversal protection in `StaticFiles`
+
 ## [1.1.0] - New Features
 ### Added
 - `HTTPException` class with Rust-side status code handling

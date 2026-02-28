@@ -13,7 +13,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
-use futures_util::{SinkExt, StreamExt};
+// use futures_util::{SinkExt, StreamExt}; // Removed unused
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 /// Route handler entry: stores the Python callable and metadata.
@@ -437,7 +437,7 @@ async fn handle_request(
             let mut builder = HyperResponse::builder()
                 .status(200)
                 .header("content-type", "text/plain")
-                .header("server", "Ignyx/1.1.0");
+                .header("server", "Ignyx/1.1.1");
                 
             if let Some(h) = custom_headers {
                 for (k, v) in h {
@@ -531,7 +531,7 @@ async fn handle_request(
                     let mut builder = HyperResponse::builder()
                         .status(status)
                         .header("content-type", &content_type)
-                        .header("server", "Ignyx/1.1.0");
+                        .header("server", "Ignyx/1.1.1");
                         
                     if let Some(h) = custom_headers {
                         for (k, v) in h {
@@ -569,7 +569,7 @@ async fn handle_request(
                     let response = HyperResponse::builder()
                         .status(500)
                         .header("content-type", "application/json")
-                        .header("server", "Ignyx/1.1.0")
+                        .header("server", "Ignyx/1.1.1")
                         .body(Full::new(Bytes::from(error_body)))
                         .unwrap();
                     return Ok(response);
@@ -585,7 +585,7 @@ async fn handle_request(
         let result = tokio::task::spawn_blocking(move || {
             Python::with_gil(|py| -> PyResult<(String, String, u16, Option<HashMap<String, String>>, Option<PyObject>)> {
                 let handler_obj = state_clone.not_found_handler.as_ref().unwrap().clone_ref(py);
-                let mut param_names = vec!["request".to_string(), "path".to_string()];
+                let param_names = vec!["request".to_string(), "path".to_string()];
                 let param_types = HashMap::new();
                 
                 let dummy_sig = crate::handler::HandlerSignature {
@@ -619,7 +619,7 @@ async fn handle_request(
                 let mut builder = HyperResponse::builder()
                     .status(status)
                     .header("content-type", &content_type)
-                    .header("server", "Ignyx/1.1.0");
+                    .header("server", "Ignyx/1.1.1");
                     
                 if let Some(h) = custom_headers {
                     for (k, v) in h {
@@ -654,7 +654,7 @@ async fn handle_request(
     let response = HyperResponse::builder()
         .status(404)
         .header("content-type", "application/json")
-        .header("server", "Ignyx/1.1.0")
+        .header("server", "Ignyx/1.1.1")
         .body(Full::new(Bytes::from(body)))
         .unwrap();
 

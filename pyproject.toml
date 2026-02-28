@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "ignyx"
-version = "1.1.0"
+version = "1.1.1"
 description = "Rust-powered Python web framework — 10x faster than FastAPI"
 readme = "README.md"
 license = { text = "MIT" }
@@ -41,3 +41,6 @@ Repository = "https://github.com/sakethdevx/ignyx"
 features = ["pyo3/extension-module"]
 python-source = "python"
 module-name = "ignyx._core"
+
+[tool.pytest.ini_options]
+addopts = "--tb=short"

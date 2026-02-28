@@ -48,8 +48,10 @@ class BackgroundTask:
             return {"status": "registered"}
     """
 
-    def __init__(self):
+    def __init__(self, func: Optional[Callable] = None, *args: Any, **kwargs: Any):
         self._tasks: list[tuple[Callable, tuple, dict]] = []
+        if func:
+            self.add(func, *args, **kwargs)
 
     def add(self, func: Callable, *args: Any, **kwargs: Any):
         """Add a background task to be executed after the response is sent."""
@@ -88,30 +90,50 @@ class BackgroundTask:
         return len(self._tasks)
 
 
-def resolve_dependencies(handler: Callable, overrides: dict = None) -> dict:
+def resolve_dependencies(handler: Callable, request: Any = None, overrides: dict = None, cache: dict = None) -> dict:
     """
     Resolve dependencies declared in a handler's signature.
     Returns a dict of resolved dependency values.
     """
     overrides = overrides or {}
+    if cache is None:
+        cache = {}
+        
     sig = inspect.signature(handler)
     resolved = {}
 
     for name, param in sig.parameters.items():
         if isinstance(param.default, Depends):
             dep = param.default
-            if dep.dependency in overrides:
-                resolved[name] = overrides[dep.dependency]
+            func = dep.dependency
+            
+            if func in overrides:
+                resolved[name] = overrides[func]
+                continue
+            
+            if dep.use_cache and func in cache:
+                resolved[name] = cache[func]
+                continue
+            
+            # Resolve inner dependencies (recursion)
+            inner_deps = resolve_dependencies(func, request, overrides, cache)
+            
+            # Call the dependency with resolved inner dependencies and optional request
+            dep_sig = inspect.signature(func)
+            kwargs = inner_deps.copy()
+            if "request" in dep_sig.parameters and "request" not in kwargs:
+                kwargs["request"] = request
+                
+            result = func(**kwargs)
+            if inspect.isgenerator(result):
+                # Generator-based dependency (with cleanup)
+                value = next(result)
+                # Note: Cleanup (yield) is not yet supported in this simple sync implementation
             else:
-                # Call the dependency
-                result = dep.dependency()
-                if inspect.isgenerator(result):
-                    # Generator-based dependency (with cleanup)
-                    resolved[name] = next(result)
-                else:
-                    resolved[name] = result
-        elif param.default is inspect.Parameter.empty:
-            # Required parameter without dependency — skip (will be filled from request)
-            pass
-
+                value = result
+            
+            if dep.use_cache:
+                cache[func] = value
+            resolved[name] = value
+            
     return resolved

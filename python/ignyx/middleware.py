@@ -105,6 +105,9 @@ class ErrorHandlerMiddleware(Middleware):
         self.debug = debug
 
     def on_error(self, request, error):
+        from ignyx.exceptions import HTTPException
+        if isinstance(error, HTTPException):
+            return None
         if self.debug:
             return {
                 "error": type(error).__name__,
