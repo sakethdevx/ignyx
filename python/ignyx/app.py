@@ -58,19 +58,7 @@ class Ignyx:
         self._openapi_schema: Optional[dict] = None
         self._exception_handlers: dict = {}
 
-        # Register catch-all routes to handle 404
-        from ignyx.responses import JSONResponse
-        from ignyx.request import Request
-        def not_found(request: Request, path: str = ""):
-            res = self._handle_exception(request, None, 404)
-            if res:
-                return res
-            return JSONResponse({"error": "Not Found", "detail": "No route found"}, status_code=404)
-        for method in ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]:
-            try:
-                self._server.add_route(method, "/{*path}", not_found)
-            except Exception:
-                pass
+        # Catch-all routes removed. 404 is now handled in server.rs by calling not_found_handler.
 
         # Add default error handler
         self._middlewares.append(ErrorHandlerMiddleware(debug=debug))
@@ -256,4 +244,13 @@ class Ignyx:
 
         # Build WebSocket route list for Rust
         ws_routes = [(ws["path"], ws["handler"]) for ws in self._ws_routes]
-        self._server.run(host, port, self._middlewares, ws_routes)
+        
+        # Pass 404 handler to Rust
+        def not_found_handler(request):
+            res = self._handle_exception(request, None, 404)
+            if res:
+                return res
+            from ignyx.responses import JSONResponse
+            return JSONResponse({"error": "Not Found", "detail": "No route found"}, status_code=404)
+            
+        self._server.run(host, port, self._middlewares, ws_routes, not_found_handler)

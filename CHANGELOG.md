@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - Code Refactoring
+### Changed
+- Refactored `server.rs` into maintainable modules (`handler.rs`, `websocket.rs`, `middleware.rs`, `multipart.rs`).
+- Optimized `ServerState` by grouping PyObject options into `PythonCachedRefs`.
+- Moved 404 fallback handling from a Python catch-all route into the Rust core.
+- Cached `resolve_dependencies` directly in `HandlerSignature`.
+
 ## [1.0.5] - README Rewrite
 ### Changed
 - Complete README rewrite with full benchmark table
