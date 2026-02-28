@@ -5,7 +5,7 @@ Auto-generates OpenAPI 3.0 schema from registered routes.
 
 import inspect
 import re
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List
 
 try:
     from pydantic import BaseModel
@@ -140,15 +140,15 @@ def generate_openapi_schema(
 
 def _get_type_schema(annotation: Any) -> Dict[str, Any]:
     "Helper to convert Python type annotations to OpenAPI schemas."
-    if annotation == str:
+    if annotation is str:
         return {"type": "string"}
-    if annotation == int:
+    if annotation is int:
         return {"type": "integer"}
-    if annotation == float:
+    if annotation is float:
         return {"type": "number"}
-    if annotation == bool:
+    if annotation is bool:
         return {"type": "boolean"}
-    if annotation == list or getattr(annotation, "__origin__", None) == list:
+    if annotation is list or getattr(annotation, "__origin__", None) is list:
         return {"type": "array", "items": {"type": "string"}}
     return {"type": "string"}
 

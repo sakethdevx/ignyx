@@ -35,7 +35,7 @@ class Ignyx:
     def __init__(
         self,
         title: str = "Ignyx",
-        version: str = "2.1.3",
+        version: str = "2.1.4",
         debug: bool = False,
         description: str = "",
         docs_url: str = "/docs",
@@ -316,9 +316,9 @@ class Ignyx:
     def run(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False) -> None:
         """Start the Ignyx server."""
         if reload:
-            from ignyx.reload import run_with_reload
             import inspect
-            import sys
+
+            from ignyx.reload import run_with_reload
 
             frame = inspect.stack()[1]
             module = inspect.getmodule(frame[0])

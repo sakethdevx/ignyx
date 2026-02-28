@@ -12,7 +12,7 @@ def run_with_reload(
     import subprocess
     import sys
 
-    print(f"🔄 Ignyx hot reload enabled — watching *.py files")
+    print("🔄 Ignyx hot reload enabled — watching *.py files")
     cmd = [
         sys.executable,
         "-c",
@@ -30,7 +30,7 @@ def run_with_reload(
     start()
     try:
         for changes in watchfiles.watch(".", watch_filter=watchfiles.PythonFilter()):
-            print(f"🔄 Change detected, reloading...")
+            print("🔄 Change detected, reloading...")
             start()
     except KeyboardInterrupt:
         if proc:
