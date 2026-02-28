@@ -35,7 +35,7 @@ class Ignyx:
     def __init__(
         self,
         title: str = "Ignyx",
-        version: str = "2.1.2",
+        version: str = "2.1.3",
         debug: bool = False,
         description: str = "",
         docs_url: str = "/docs",
@@ -174,7 +174,7 @@ class Ignyx:
 
     def include_router(self, router: Any) -> None:
         """Include routes from a Router instance."""
-        for method, path, handler in router.routes:
+        for method, path, handler, tags in router.routes:
             dispatch = self._create_dispatch(handler)
             self._server.add_route(method, path, dispatch)
             self._routes.append(
@@ -183,66 +183,67 @@ class Ignyx:
                     "path": path,
                     "handler": handler,
                     "name": getattr(handler, "__name__", "unknown"),
+                    "tags": tags,
                 }
             )
 
     def get(
-        self, path: str, **kwargs: Any
+        self, path: str, tags: Optional[List[str]] = None, **kwargs: Any
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a GET route."""
 
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            return self._add_route("GET", path, func, **kwargs)
+            return self._add_route("GET", path, func, tags=tags, **kwargs)
 
         return decorator
 
     def post(
-        self, path: str, **kwargs: Any
+        self, path: str, tags: Optional[List[str]] = None, **kwargs: Any
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a POST route."""
 
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            return self._add_route("POST", path, func, **kwargs)
+            return self._add_route("POST", path, func, tags=tags, **kwargs)
 
         return decorator
 
     def put(
-        self, path: str, **kwargs: Any
+        self, path: str, tags: Optional[List[str]] = None, **kwargs: Any
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a PUT route."""
 
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            return self._add_route("PUT", path, func, **kwargs)
+            return self._add_route("PUT", path, func, tags=tags, **kwargs)
 
         return decorator
 
     def delete(
-        self, path: str, **kwargs: Any
+        self, path: str, tags: Optional[List[str]] = None, **kwargs: Any
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a DELETE route."""
 
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            return self._add_route("DELETE", path, func, **kwargs)
+            return self._add_route("DELETE", path, func, tags=tags, **kwargs)
 
         return decorator
 
     def patch(
-        self, path: str, **kwargs: Any
+        self, path: str, tags: Optional[List[str]] = None, **kwargs: Any
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a PATCH route."""
 
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            return self._add_route("PATCH", path, func, **kwargs)
+            return self._add_route("PATCH", path, func, tags=tags, **kwargs)
 
         return decorator
 
     def options(
-        self, path: str, **kwargs: Any
+        self, path: str, tags: Optional[List[str]] = None, **kwargs: Any
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register an OPTIONS route."""
 
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            return self._add_route("OPTIONS", path, func, **kwargs)
+            return self._add_route("OPTIONS", path, func, tags=tags, **kwargs)
 
         return decorator
 
@@ -312,8 +313,19 @@ class Ignyx:
         """Get the dependency overrides dict (for testing)."""
         return self._dependency_overrides
 
-    def run(self, host: str = "0.0.0.0", port: int = 8000) -> None:
+    def run(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False) -> None:
         """Start the Ignyx server."""
+        if reload:
+            from ignyx.reload import run_with_reload
+            import inspect
+            import sys
+
+            frame = inspect.stack()[1]
+            module = inspect.getmodule(frame[0])
+            mod_name = module.__name__ if module else "__main__"
+            run_with_reload(mod_name, host=host, port=port)
+            return
+
         # Register docs routes before starting
         self._register_docs_routes()
 

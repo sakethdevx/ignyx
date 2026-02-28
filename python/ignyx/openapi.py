@@ -3,24 +3,33 @@ OpenAPI schema generation and Swagger UI / ReDoc serving.
 Auto-generates OpenAPI 3.0 schema from registered routes.
 """
 
-from typing import Any, Dict
+import inspect
+import re
+from typing import Any, Dict, List, Optional, Type
+
+try:
+    from pydantic import BaseModel
+except ImportError:
+    BaseModel = None  # type: ignore
 
 
 def generate_openapi_schema(
     title: str,
     version: str,
-    routes: list[dict],
+    routes: List[Dict[str, Any]],
     description: str = "",
 ) -> Dict[str, Any]:
     """
     Generate an OpenAPI 3.0 schema from registered routes.
     """
     paths: Dict[str, Any] = {}
+    components: Dict[str, Any] = {"schemas": {}}
 
     for route in routes:
         method = route["method"].lower()
         path = route["path"]
         handler = route["handler"]
+        tags = route.get("tags", [])
         name = route.get("name", handler.__name__ if hasattr(handler, "__name__") else "unknown")
 
         # Convert path params from {param} to standard OpenAPI format
@@ -30,46 +39,118 @@ def generate_openapi_schema(
             paths[openapi_path] = {}
 
         # Build the operation
-        operation = {
+        operation: Dict[str, Any] = {
             "summary": name.replace("_", " ").title(),
             "operationId": name,
             "responses": {
                 "200": {
                     "description": "Successful Response",
-                    "content": {
-                        "application/json": {"schema": {"type": "object"}},
-                    },
+                    "content": {"application/json": {"schema": {"type": "object"}}},
                 }
             },
         }
 
-        # Extract path parameters
-        import re
-
-        param_names = re.findall(r"\{(\w+)\}", path)
-        if param_names:
-            operation["parameters"] = [
-                {"name": p, "in": "path", "required": True, "schema": {"type": "string"}}
-                for p in param_names
-            ]
+        if tags:
+            operation["tags"] = tags
 
         # Check handler docstring for description
         if handler.__doc__:
             operation["description"] = handler.__doc__.strip()
 
+        # Extract parameters using inspect
+        sig = inspect.signature(handler)
+        parameters = []
+        path_params = re.findall(r"\{(\w+)\}", path)
+
+        has_body = False
+
+        for param_name, param in sig.parameters.items():
+            if param_name in ["request", "background_tasks"]:
+                continue
+
+            annotation = param.annotation
+            is_path = param_name in path_params
+
+            if param_name == "body" or (
+                BaseModel and isinstance(annotation, type) and issubclass(annotation, BaseModel)
+            ):
+                has_body = True
+                model_name = annotation.__name__ if hasattr(annotation, "__name__") else "BodyModel"
+                if BaseModel and isinstance(annotation, type) and issubclass(annotation, BaseModel):
+                    if model_name not in components["schemas"]:
+                        components["schemas"][model_name] = annotation.model_json_schema()
+
+                    operation["requestBody"] = {
+                        "content": {
+                            "application/json": {"schema": {"$ref": f"#/components/schemas/{model_name}"}}
+                        },
+                        "required": True,
+                    }
+                else:
+                    operation["requestBody"] = {
+                        "content": {"application/json": {"schema": {"type": "object"}}},
+                        "required": True,
+                    }
+                continue
+
+            if is_path:
+                parameters.append(
+                    {
+                        "name": param_name,
+                        "in": "path",
+                        "required": True,
+                        "schema": _get_type_schema(annotation),
+                    }
+                )
+            else:
+                # Query parameter
+                parameters.append(
+                    {
+                        "name": param_name,
+                        "in": "query",
+                        "required": param.default is inspect.Parameter.empty,
+                        "schema": _get_type_schema(annotation),
+                    }
+                )
+
+        if parameters:
+            operation["parameters"] = parameters
+
+        if has_body:
+            operation["responses"]["422"] = {
+                "description": "Validation Error",
+                "content": {"application/json": {"schema": {"type": "object"}}},
+            }
+
         paths[openapi_path][method] = operation
 
     schema = {
-        "openapi": "3.0.0",
+        "openapi": "3.1.0",
         "info": {
             "title": title,
             "version": version,
             "description": description or f"{title} API powered by Ignyx",
         },
         "paths": paths,
+        "components": components,
     }
 
     return schema
+
+
+def _get_type_schema(annotation: Any) -> Dict[str, Any]:
+    "Helper to convert Python type annotations to OpenAPI schemas."
+    if annotation == str:
+        return {"type": "string"}
+    if annotation == int:
+        return {"type": "integer"}
+    if annotation == float:
+        return {"type": "number"}
+    if annotation == bool:
+        return {"type": "boolean"}
+    if annotation == list or getattr(annotation, "__origin__", None) == list:
+        return {"type": "array", "items": {"type": "string"}}
+    return {"type": "string"}
 
 
 SWAGGER_UI_HTML = """<!DOCTYPE html>

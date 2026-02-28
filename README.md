@@ -14,31 +14,34 @@
   <a href="https://github.com/sakethdevx/ignyx/actions">
     <img src="https://github.com/sakethdevx/ignyx/actions/workflows/CI.yml/badge.svg" alt="CI status">
   </a>
+  <a href="https://github.com/sakethdevx/ignyx/actions">
+    <img src="https://img.shields.io/badge/coverage-80%25-brightgreen" alt="Coverage">
+  </a>
   <a href="https://pypi.org/project/ignyx/">
     <img src="https://img.shields.io/pypi/pyversions/ignyx" alt="Python versions">
-  </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
   </a>
   <a href="https://sakethdevx.github.io/ignyx">
     <img src="https://img.shields.io/badge/docs-online-blue" alt="Docs">
   </a>
 </p>
 
-## Description
+# Ignyx
 
-Ignyx is a next-generation Python web framework engineered for maximum throughput, utilizing a Rust-powered HTTP core built on Hyper and Tokio. It provides a familiar, FastAPI-like decorator syntax, allowing developers to build high-performance APIs with zero learning curve. In honest benchmarks, Ignyx operates 8-9x faster than standard Python async frameworks. It integrates seamlessly with the modern Python ecosystem, featuring full async/await capability, Pydantic v2 validation, WebSockets, and dependency injection.
+> 📖 **[Full Documentation](https://sakethdevx.github.io/ignyx)**
+
+Ignyx is a next-generation Python web framework engineered for maximum throughput, utilizing a Rust-powered HTTP core built on Hyper and Tokio. It provides a familiar, FastAPI-like decorator syntax, allowing developers to build high-performance APIs with zero learning curve. In honest benchmarks, Ignyx operates 8-9x faster than standard Python async frameworks.
 
 ## Features
 
-- Blazing fast (8-9x FastAPI)
-- Owns full HTTP pipeline — no ASGI overhead
-- Native async/await support
-- Pydantic v2 validation
-- Dependency injection (Depends pattern)
-- WebSocket support
-- Modular routing with Router + prefix
-- `py.typed` for full IDE autocompletion
+- **Blazing Fast**: 8-9x faster than FastAPI in standard benchmarks.
+- **Zero Overhead**: Owns the full HTTP pipeline — no ASGI overhead.
+- **Hot Reload**: Blazing fast development with built-in file watcher.
+- **Pydantic v2**: Deep integration for request body validation.
+- **Advanced OpenAPI**: Auto-generates schemas with Pydantic model support.
+- **Dependency Injection**: Familiar `Depends()` pattern for clean logic.
+- **WebSockets**: Native, high-concurrency WebSocket support.
+- **Modular**: Organize APIs with `Router` prefixes.
+- **Typed**: Shipped with `py.typed` for perfect IDE autocompletion.
 
 ## Benchmark
 
@@ -46,16 +49,16 @@ Ignyx is a next-generation Python web framework engineered for maximum throughpu
 
 | Endpoint           | Ignyx        | FastAPI     | Speedup |
 | ------------------ | ------------ | ----------- | ------- |
-| `/plaintext`       | 53,886 req/s | 6,193 req/s | 🔥 8.70x |
-| `/users/{id}`      | 48,988 req/s | 5,597 req/s | 🔥 8.75x |
-| `/users` (POST JSON)| 44,178 req/s | 5,200 req/s | 🔥 8.49x |
+| `/plaintext`       | 51,771 req/s | 5,846 req/s | 🔥 8.8x |
+| `/json`            | 37,138 req/s | 4,844 req/s | 🔥 7.6x |
+| `/users/{id}`      | 43,261 req/s | 5,306 req/s | 🔥 8.1x |
 
-*Note: FastAPI tested with Uvicorn single worker — standard config.*
+*Note: Ignyx tested with native Rust core. FastAPI tested with Uvicorn single worker — standard config.*
 
 ## Installation
 
 ```bash
-pip install ignyx==2.1.0
+pip install ignyx==2.1.3
 ```
 Or with `uv`:
 ```bash
@@ -74,7 +77,7 @@ async def root(request):
     return {"message": "Hello from Ignyx!"}
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=8000, reload=True)
 ```
 
 ## Feature Examples
@@ -84,7 +87,7 @@ if __name__ == "__main__":
 
 ```python
 from ignyx import Ignyx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 app = Ignyx()
 
@@ -93,12 +96,8 @@ class User(BaseModel):
     age: int
 
 @app.post("/users")
-async def create_user(request):
-    try:
-        user = User(**request.json())
-        return {"status": "success", "data": user.model_dump()}
-    except ValidationError as e:
-        return {"error": e.errors()}, 400
+async def create_user(user: User):
+    return {"status": "success", "data": user.model_dump()}
 ```
 </details>
 
@@ -111,9 +110,8 @@ from ignyx import Ignyx
 app = Ignyx()
 
 @app.get("/users/{id}")
-async def get_user(request, id: int):
-    format_type = request.query.get("format", "json")
-    return {"id": id, "format": format_type}
+async def get_user(id: int, format: str = "json"):
+    return {"id": id, "format": format}
 ```
 </details>
 
@@ -125,33 +123,16 @@ from ignyx import Ignyx, Depends
 
 app = Ignyx()
 
-def get_token(request):
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        return auth_header.split(" ")[1]
-    return None
+def get_db():
+    db = Database()
+    try:
+        yield db
+    finally:
+        db.close()
 
-@app.get("/secure")
-async def secure_route(request, token=Depends(get_token)):
-    if not token:
-        return {"error": "Unauthorized"}, 401
-    return {"message": "Access granted", "token": token}
-```
-</details>
-
-<details>
-<summary><b>Middleware</b></summary>
-
-```python
-from ignyx import Ignyx
-
-app = Ignyx()
-
-@app.middleware
-async def cors_middleware(request, call_next):
-    response = await call_next(request)
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    return response
+@app.get("/users")
+async def get_users(db = Depends(get_db)):
+    return db.query("SELECT * FROM users")
 ```
 </details>
 
@@ -168,26 +149,7 @@ async def echo_server(ws):
     await ws.accept()
     while True:
         data = await ws.receive_text()
-        if data == "close":
-            break
         await ws.send_text(f"Echo: {data}")
-```
-</details>
-
-<details>
-<summary><b>Modular Routing</b></summary>
-
-```python
-from ignyx import Ignyx, Router
-
-app = Ignyx()
-api_router = Router(prefix="/api/v1")
-
-@api_router.get("/status")
-async def status(request):
-    return {"status": "operational"}
-
-app.include_router(api_router)
 ```
 </details>
 
@@ -202,17 +164,12 @@ app.include_router(api_router)
 | Modular Routers        | ✅    | ✅      |
 | Performance (req/s)    | ~50k  | ~6k     |
 | ASGI overhead          | ❌ None | ✅ Yes |
-| TestClient             | ✅ | ✅     |
-| Static file serving    | ✅ | ✅     |
-| Lifespan events        | ✅ | ✅     |
-| Exception handlers     | ✅    | ✅      |
+| Hot Reload             | ✅ | ✅     |
+| Native Rust Core       | ✅ | ❌     |
 
-## Current Limitations
+## ⭐ Star History
 
-- Hot reloading not yet implemented
-- OpenAPI schema is basic (no Pydantic response schemas yet)
-
-These are all on the roadmap and will ship in upcoming releases.
+[![Star History Chart](https://api.star-history.com/svg?repos=sakethdevx/ignyx&type=Date)](https://star-history.com/#sakethdevx/ignyx&Date)
 
 ## Contributing
 
