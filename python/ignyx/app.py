@@ -5,8 +5,7 @@ Integrates middleware, OpenAPI, dependency injection, and background tasks.
 """
 
 import inspect
-import json
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 from ignyx._core import Server
 from ignyx.middleware import ErrorHandlerMiddleware, Middleware
@@ -36,55 +35,61 @@ class Ignyx:
     def __init__(
         self,
         title: str = "Ignyx",
-        version: str = "2.1.1",
+        version: str = "2.1.2",
         debug: bool = False,
         description: str = "",
         docs_url: str = "/docs",
         redoc_url: str = "/redoc",
         openapi_url: str = "/openapi.json",
-    ):
-        self._server = Server()
-        self._routes: list[dict] = []
-        self._ws_routes: list[dict] = []
-        self._middlewares: list[Middleware] = []
-        self._dependency_overrides: dict = {}
-        self.title = title
-        self.version = version
-        self.debug = debug
-        self.description = description
-        self.docs_url = docs_url
-        self.redoc_url = redoc_url
-        self.openapi_url = openapi_url
-        self._openapi_schema: Optional[dict] = None
-        self._exception_handlers: dict = {}
-        self._startup_handlers: list = []
-        self._shutdown_handlers: list = []
+    ) -> None:
+        """Initialize the Ignyx application."""
+        self._server: Server = Server()
+        self._routes: List[Dict[str, Any]] = []
+        self._ws_routes: List[Dict[str, Any]] = []
+        self._middlewares: List[Middleware] = []
+        self._dependency_overrides: Dict[Callable[..., Any], Any] = {}
+        self.title: str = title
+        self.version: str = version
+        self.debug: bool = debug
+        self.description: str = description
+        self.docs_url: str = docs_url
+        self.redoc_url: str = redoc_url
+        self.openapi_url: str = openapi_url
+        self._openapi_schema: Optional[Dict[str, Any]] = None
+        self._exception_handlers: Dict[Union[int, Type[Exception]], Callable[..., Any]] = {}
+        self._startup_handlers: List[Callable[..., Any]] = []
+        self._shutdown_handlers: List[Callable[..., Any]] = []
 
         from types import SimpleNamespace
-        self.state = SimpleNamespace()
 
-        # Catch-all routes removed. 404 is now handled in server.rs by calling not_found_handler.
+        self.state: SimpleNamespace = SimpleNamespace()
 
         # Add default error handler
         self._middlewares.append(ErrorHandlerMiddleware(debug=debug))
 
-    def exception_handler(self, status_code_or_exc):
-        def decorator(func):
+    def exception_handler(
+        self, status_code_or_exc: Union[int, Type[Exception]]
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """Decorator to register a custom exception handler."""
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             self._exception_handlers[status_code_or_exc] = func
             return func
+
         return decorator
 
-    def on_startup(self, func):
+    def on_startup(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """Register a function to run before the server starts."""
         self._startup_handlers.append(func)
         return func
 
-    def on_shutdown(self, func):
+    def on_shutdown(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """Register a function to run when the server shuts down."""
         self._shutdown_handlers.append(func)
         return func
 
-    def _handle_exception(self, request, exc, status_code):
+    def _handle_exception(self, request: Any, exc: Optional[Exception], status_code: int) -> Any:
+        "Internal exception dispatcher."
         # Check exception type
         for exc_type, handler in self._exception_handlers.items():
             if isinstance(exc_type, type) and isinstance(exc, exc_type):
@@ -94,11 +99,14 @@ class Ignyx:
             return self._exception_handlers[status_code](request, exc)
         return None
 
-    def _create_dispatch(self, handler: Callable) -> Callable:
+    def _create_dispatch(self, handler: Callable[..., Any]) -> Callable[..., Any]:
+        "Create a dispatch wrapper for sync or async handlers."
         from functools import wraps
+
         if inspect.iscoroutinefunction(handler):
+
             @wraps(handler)
-            async def async_dispatch(*args, **kw):
+            async def async_dispatch(*args: Any, **kw: Any) -> Any:
                 request = kw.get("request") or (args[0] if args else None)
                 try:
                     res = await handler(*args, **kw)
@@ -113,10 +121,12 @@ class Ignyx:
                     if handled:
                         return handled
                     raise exc
+
             return async_dispatch
         else:
+
             @wraps(handler)
-            def sync_dispatch(*args, **kw):
+            def sync_dispatch(*args: Any, **kw: Any) -> Any:
                 request = kw.get("request") or (args[0] if args else None)
                 try:
                     res = handler(*args, **kw)
@@ -131,93 +141,131 @@ class Ignyx:
                     if handled:
                         return handled
                     raise exc
+
             return sync_dispatch
 
-    def add_middleware(self, middleware: Any) -> None:
+    def add_middleware(self, middleware: Middleware) -> None:
         """Add a middleware to the application."""
         self._middlewares.append(middleware)
 
-    def _add_route(self, method: str, path: str, handler: Callable, **kwargs) -> Callable:
-        """Register a route handler."""
+    def _add_route(
+        self, method: str, path: str, handler: Callable[..., Any], **kwargs: Any
+    ) -> Callable[..., Any]:
+        """Register a route handler internally."""
         dispatch = self._create_dispatch(handler)
         self._server.add_route(method, path, dispatch)
-        self._routes.append({
-            "method": method,
-            "path": path,
-            "handler": handler,
-            "name": getattr(handler, "__name__", "unknown"),
-            **kwargs,
-        })
-        if method != "OPTIONS" and not any(r["path"] == path and r["method"] == "OPTIONS" for r in self._routes):
-            self._server.add_route("OPTIONS", path, self._create_dispatch(lambda request: ""))
-            self._routes.append({"method": "OPTIONS", "path": path, "handler": lambda req: "", "name": "options"})
-        return handler
-
-    def include_router(self, router):
-        for method, path, handler in router.routes:
-            dispatch = self._create_dispatch(handler)
-            self._server.add_route(method, path, dispatch)
-            self._routes.append({
+        self._routes.append(
+            {
                 "method": method,
                 "path": path,
                 "handler": handler,
-                "name": getattr(handler, "__name__", "unknown")
-            })
+                "name": getattr(handler, "__name__", "unknown"),
+                **kwargs,
+            }
+        )
+        if method != "OPTIONS" and not any(
+            r["path"] == path and r["method"] == "OPTIONS" for r in self._routes
+        ):
+            self._server.add_route("OPTIONS", path, self._create_dispatch(lambda request: ""))
+            self._routes.append(
+                {"method": "OPTIONS", "path": path, "handler": lambda req: "", "name": "options"}
+            )
+        return handler
 
-    def get(self, path: str, **kwargs) -> Callable:
+    def include_router(self, router: Any) -> None:
+        """Include routes from a Router instance."""
+        for method, path, handler in router.routes:
+            dispatch = self._create_dispatch(handler)
+            self._server.add_route(method, path, dispatch)
+            self._routes.append(
+                {
+                    "method": method,
+                    "path": path,
+                    "handler": handler,
+                    "name": getattr(handler, "__name__", "unknown"),
+                }
+            )
+
+    def get(
+        self, path: str, **kwargs: Any
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a GET route."""
-        def decorator(func: Callable) -> Callable:
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             return self._add_route("GET", path, func, **kwargs)
+
         return decorator
 
-    def post(self, path: str, **kwargs) -> Callable:
+    def post(
+        self, path: str, **kwargs: Any
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a POST route."""
-        def decorator(func: Callable) -> Callable:
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             return self._add_route("POST", path, func, **kwargs)
+
         return decorator
 
-    def put(self, path: str, **kwargs) -> Callable:
+    def put(
+        self, path: str, **kwargs: Any
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a PUT route."""
-        def decorator(func: Callable) -> Callable:
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             return self._add_route("PUT", path, func, **kwargs)
+
         return decorator
 
-    def delete(self, path: str, **kwargs) -> Callable:
+    def delete(
+        self, path: str, **kwargs: Any
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a DELETE route."""
-        def decorator(func: Callable) -> Callable:
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             return self._add_route("DELETE", path, func, **kwargs)
+
         return decorator
 
-    def patch(self, path: str, **kwargs) -> Callable:
+    def patch(
+        self, path: str, **kwargs: Any
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a PATCH route."""
-        def decorator(func: Callable) -> Callable:
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             return self._add_route("PATCH", path, func, **kwargs)
+
         return decorator
 
-    def options(self, path: str, **kwargs) -> Callable:
+    def options(
+        self, path: str, **kwargs: Any
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register an OPTIONS route."""
-        def decorator(func: Callable) -> Callable:
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             return self._add_route("OPTIONS", path, func, **kwargs)
+
         return decorator
 
-    def websocket(self, path: str) -> Callable:
+    def websocket(self, path: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a WebSocket route."""
-        def decorator(func: Callable) -> Callable:
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             self._ws_routes.append({"path": path, "handler": func})
             return func
+
         return decorator
 
-    def mount(self, path: str, app):
+    def mount(self, path: str, app: Callable[..., Any]) -> None:
         """Mount a sub-application or static files handler."""
         mount_path = path.rstrip("/")
 
-        def static_handler(request, file_path: str = ""):
+        def static_handler(request: Any, file_path: str = "") -> Any:
             return app(file_path)
 
         # Register a catch-all route for the mounted path
         self._server.add_route("GET", mount_path + "/{*file_path}", static_handler)
 
-    def openapi(self) -> dict:
+    def openapi(self) -> Dict[str, Any]:
         """Get the OpenAPI schema, generating it if needed."""
         if self._openapi_schema is None:
             self._openapi_schema = generate_openapi_schema(
@@ -228,13 +276,12 @@ class Ignyx:
             )
         return self._openapi_schema
 
-    def _register_docs_routes(self):
+    def _register_docs_routes(self) -> None:
         """Register the OpenAPI, Swagger UI, and ReDoc routes."""
         schema = self.openapi()
-        json.dumps(schema)
 
         # OpenAPI JSON endpoint
-        def openapi_json():
+        def openapi_json() -> Dict[str, Any]:
             return schema
 
         self._server.add_route("GET", self.openapi_url, openapi_json)
@@ -245,7 +292,7 @@ class Ignyx:
             openapi_url=self.openapi_url,
         )
 
-        def swagger_ui():
+        def swagger_ui() -> str:
             return swagger_html
 
         self._server.add_route("GET", self.docs_url, swagger_ui)
@@ -256,16 +303,16 @@ class Ignyx:
             openapi_url=self.openapi_url,
         )
 
-        def redoc():
+        def redoc() -> str:
             return redoc_html
 
         self._server.add_route("GET", self.redoc_url, redoc)
 
-    def dependency_overrides(self) -> dict:
+    def dependency_overrides(self) -> Dict[Callable[..., Any], Any]:
         """Get the dependency overrides dict (for testing)."""
         return self._dependency_overrides
 
-    def run(self, host: str = "0.0.0.0", port: int = 8000):
+    def run(self, host: str = "0.0.0.0", port: int = 8000) -> None:
         """Start the Ignyx server."""
         # Register docs routes before starting
         self._register_docs_routes()
@@ -279,18 +326,24 @@ class Ignyx:
         ws_routes = [(ws["path"], ws["handler"]) for ws in self._ws_routes]
 
         # Pass 404 handler to Rust
-        def not_found_handler(request):
+        def not_found_handler(request: Any) -> Any:
             res = self._handle_exception(request, None, 404)
             if res:
                 return res
             from ignyx.responses import JSONResponse
-            return JSONResponse({"error": "Not Found", "detail": "No route found"}, status_code=404)
+
+            return JSONResponse(
+                {"error": "Not Found", "detail": "No route found"}, status_code=404
+            )
 
         import asyncio
+
         for handler in self._startup_handlers:
             if asyncio.iscoroutinefunction(handler):
                 asyncio.run(handler())
             else:
                 handler()
 
-        self._server.run(host, port, self._middlewares, ws_routes, not_found_handler, self._shutdown_handlers)
+        self._server.run(
+            host, port, self._middlewares, ws_routes, not_found_handler, self._shutdown_handlers
+        )

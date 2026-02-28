@@ -5,7 +5,7 @@ Inspired by FastAPI's Depends() pattern.
 
 import concurrent.futures
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 
 class Depends:
@@ -25,11 +25,13 @@ class Depends:
             return db.query("SELECT * FROM users")
     """
 
-    def __init__(self, dependency: Callable, use_cache: bool = True):
+    def __init__(self, dependency: Callable[..., Any], use_cache: bool = True) -> None:
+        "Initialize the dependency."
         self.dependency = dependency
         self.use_cache = use_cache
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        "Simple string representation."
         return f"Depends({self.dependency.__name__})"
 
 
@@ -48,22 +50,24 @@ class BackgroundTask:
             return {"status": "registered"}
     """
 
-    def __init__(self, func: Optional[Callable] = None, *args: Any, **kwargs: Any):
-        self._tasks: list[tuple[Callable, tuple, dict]] = []
+    def __init__(self, func: Optional[Callable[..., Any]] = None, *args: Any, **kwargs: Any) -> None:
+        "Initialize the background task."
+        self._tasks: list[tuple[Callable[..., Any], tuple[Any, ...], Dict[str, Any]]] = []
         if func:
             self.add(func, *args, **kwargs)
 
-    def add(self, func: Callable, *args: Any, **kwargs: Any):
+    def add(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
         """Add a background task to be executed after the response is sent."""
         self._tasks.append((func, args, kwargs))
 
-    def execute(self):
+    def execute(self) -> None:
         """Execute all pending background tasks sequentially."""
 
         for func, args, kwargs in self._tasks:
             try:
                 if inspect.iscoroutinefunction(func):
                     import asyncio
+
                     try:
                         loop = asyncio.get_event_loop()
                         if loop.is_running():
@@ -75,6 +79,7 @@ class BackgroundTask:
                 else:
                     # Run sync tasks in a thread pool to prevent blocking the event loop
                     import asyncio
+
                     try:
                         loop = asyncio.get_running_loop()
                         with concurrent.futures.ThreadPoolExecutor() as pool:
@@ -85,11 +90,17 @@ class BackgroundTask:
             except Exception as e:
                 print(f"Background task error: {e}")
 
-    def __len__(self):
+    def __len__(self) -> int:
+        "Return the number of pending tasks."
         return len(self._tasks)
 
 
-def resolve_dependencies(handler: Callable, request: Any = None, overrides: dict = None, cache: dict = None) -> dict:
+def resolve_dependencies(
+    handler: Callable[..., Any],
+    request: Any = None,
+    overrides: Optional[Dict[Callable[..., Any], Any]] = None,
+    cache: Optional[Dict[Callable[..., Any], Any]] = None,
+) -> Dict[str, Any]:
     """
     Resolve dependencies declared in a handler's signature.
     Returns a dict of resolved dependency values.
@@ -99,7 +110,7 @@ def resolve_dependencies(handler: Callable, request: Any = None, overrides: dict
         cache = {}
 
     sig = inspect.signature(handler)
-    resolved = {}
+    resolved: Dict[str, Any] = {}
 
     for name, param in sig.parameters.items():
         if isinstance(param.default, Depends):

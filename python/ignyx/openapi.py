@@ -3,6 +3,73 @@ OpenAPI schema generation and Swagger UI / ReDoc serving.
 Auto-generates OpenAPI 3.0 schema from registered routes.
 """
 
+from typing import Any, Dict
+
+
+def generate_openapi_schema(
+    title: str,
+    version: str,
+    routes: list[dict],
+    description: str = "",
+) -> Dict[str, Any]:
+    """
+    Generate an OpenAPI 3.0 schema from registered routes.
+    """
+    paths: Dict[str, Any] = {}
+
+    for route in routes:
+        method = route["method"].lower()
+        path = route["path"]
+        handler = route["handler"]
+        name = route.get("name", handler.__name__ if hasattr(handler, "__name__") else "unknown")
+
+        # Convert path params from {param} to standard OpenAPI format
+        openapi_path = path
+
+        if openapi_path not in paths:
+            paths[openapi_path] = {}
+
+        # Build the operation
+        operation = {
+            "summary": name.replace("_", " ").title(),
+            "operationId": name,
+            "responses": {
+                "200": {
+                    "description": "Successful Response",
+                    "content": {
+                        "application/json": {"schema": {"type": "object"}},
+                    },
+                }
+            },
+        }
+
+        # Extract path parameters
+        import re
+
+        param_names = re.findall(r"\{(\w+)\}", path)
+        if param_names:
+            operation["parameters"] = [
+                {"name": p, "in": "path", "required": True, "schema": {"type": "string"}}
+                for p in param_names
+            ]
+
+        # Check handler docstring for description
+        if handler.__doc__:
+            operation["description"] = handler.__doc__.strip()
+
+        paths[openapi_path][method] = operation
+
+    schema = {
+        "openapi": "3.0.0",
+        "info": {
+            "title": title,
+            "version": version,
+            "description": description or f"{title} API powered by Ignyx",
+        },
+        "paths": paths,
+    }
+
+    return schema
 
 
 SWAGGER_UI_HTML = """<!DOCTYPE html>
@@ -42,75 +109,3 @@ REDOC_HTML = """<!DOCTYPE html>
     <script src="https://unpkg.com/redoc@latest/bundles/redoc.standalone.js"></script>
 </body>
 </html>"""
-
-
-def generate_openapi_schema(
-    title: str,
-    version: str,
-    routes: list[dict],
-    description: str = "",
-) -> dict:
-    """
-    Generate an OpenAPI 3.0 schema from registered routes.
-    """
-    paths = {}
-
-    for route in routes:
-        method = route["method"].lower()
-        path = route["path"]
-        handler = route["handler"]
-        name = route.get("name", handler.__name__ if hasattr(handler, "__name__") else "unknown")
-
-        # Convert path params from {param} to standard OpenAPI format
-        openapi_path = path
-
-        if openapi_path not in paths:
-            paths[openapi_path] = {}
-
-        # Build the operation
-        operation = {
-            "summary": name.replace("_", " ").title(),
-            "operationId": name,
-            "responses": {
-                "200": {
-                    "description": "Successful Response",
-                    "content": {
-                        "application/json": {
-                            "schema": {"type": "object"}
-                        }
-                    }
-                }
-            }
-        }
-
-        # Extract path parameters
-        import re
-        param_names = re.findall(r'\{(\w+)\}', path)
-        if param_names:
-            operation["parameters"] = [
-                {
-                    "name": p,
-                    "in": "path",
-                    "required": True,
-                    "schema": {"type": "string"}
-                }
-                for p in param_names
-            ]
-
-        # Check handler docstring for description
-        if handler.__doc__:
-            operation["description"] = handler.__doc__.strip()
-
-        paths[openapi_path][method] = operation
-
-    schema = {
-        "openapi": "3.0.0",
-        "info": {
-            "title": title,
-            "version": version,
-            "description": description or f"{title} API powered by Ignyx",
-        },
-        "paths": paths,
-    }
-
-    return schema

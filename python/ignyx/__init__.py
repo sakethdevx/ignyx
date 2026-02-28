@@ -7,7 +7,13 @@ from ignyx._core import Request, Response
 from ignyx.app import Ignyx
 from ignyx.depends import BackgroundTask, Depends
 from ignyx.exceptions import HTTPException
-from ignyx.middleware import AccessLogMiddleware, Middleware, RateLimitMiddleware
+from ignyx.middleware import (
+    AccessLogMiddleware,
+    CORSMiddleware,
+    ErrorHandlerMiddleware,
+    Middleware,
+    RateLimitMiddleware,
+)
 from ignyx.responses import (
     FileResponse,
     HTMLResponse,
@@ -43,5 +49,7 @@ __all__ = [
     "StaticFiles",
     "RateLimitMiddleware",
     "AccessLogMiddleware",
+    "CORSMiddleware",
+    "ErrorHandlerMiddleware",
 ]
-__version__ = "2.1.1"
+__version__ = "2.1.2"

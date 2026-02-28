@@ -1,18 +1,23 @@
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 
 class BaseResponse:
     """
     Base class for all Ignyx responses.
     """
-    def __init__(self, content: Any, status_code: int = 200, headers: Optional[Dict[str, str]] = None) -> None:
+
+    def __init__(
+        self, content: Any, status_code: int = 200, headers: Optional[Dict[str, str]] = None
+    ) -> None:
+        "Initialize the response."
         self.content: Any = content
         self.status_code: int = status_code
         self.headers: Dict[str, str] = headers or {}
         self.content_type: str = "text/plain"
 
     def render(self) -> Any:
+        "Render the response content."
         return self.content
 
     def set_cookie(
@@ -23,7 +28,7 @@ class BaseResponse:
         httponly: bool = False,
         secure: bool = False,
         samesite: str = "lax",
-        path: str = "/"
+        path: str = "/",
     ) -> None:
         """Set a cookie on the response."""
         cookie = f"{key}={value}; Path={path}; SameSite={samesite}"
@@ -44,12 +49,18 @@ class JSONResponse(BaseResponse):
     """
     Returns a JSON encoded response.
     """
-    def __init__(self, content: Any, status_code: int = 200, headers: Optional[Dict[str, str]] = None) -> None:
+
+    def __init__(
+        self, content: Any, status_code: int = 200, headers: Optional[Dict[str, str]] = None
+    ) -> None:
+        "Initialize the JSON response."
         super().__init__(content, status_code, headers)
         self.content_type = "application/json"
 
     def render(self) -> str:
+        "Serialize content to a JSON string."
         import json
+
         return json.dumps(self.content)
 
 
@@ -57,7 +68,11 @@ class HTMLResponse(BaseResponse):
     """
     Returns an HTML response.
     """
-    def __init__(self, content: str, status_code: int = 200, headers: Optional[Dict[str, str]] = None) -> None:
+
+    def __init__(
+        self, content: str, status_code: int = 200, headers: Optional[Dict[str, str]] = None
+    ) -> None:
+        "Initialize the HTML response."
         super().__init__(content, status_code, headers)
         self.content_type = "text/html; charset=utf-8"
 
@@ -66,7 +81,11 @@ class PlainTextResponse(BaseResponse):
     """
     Returns a plain text response.
     """
-    def __init__(self, content: str, status_code: int = 200, headers: Optional[Dict[str, str]] = None) -> None:
+
+    def __init__(
+        self, content: str, status_code: int = 200, headers: Optional[Dict[str, str]] = None
+    ) -> None:
+        "Initialize the plain text response."
         super().__init__(content, status_code, headers)
         self.content_type = "text/plain; charset=utf-8"
 
@@ -75,7 +94,11 @@ class RedirectResponse(BaseResponse):
     """
     Returns an HTTP redirect.
     """
-    def __init__(self, url: str, status_code: int = 302, headers: Optional[Dict[str, str]] = None) -> None:
+
+    def __init__(
+        self, url: str, status_code: int = 302, headers: Optional[Dict[str, str]] = None
+    ) -> None:
+        "Initialize the redirect response."
         super().__init__("", status_code, headers)
         self.content_type = "text/plain"
         self.headers["location"] = url
@@ -85,20 +108,23 @@ class FileResponse(BaseResponse):
     """
     Returns a file attachment response.
     """
+
     def __init__(
         self,
-        path: str,
+        path: Union[str, os.PathLike],
         filename: Optional[str] = None,
         status_code: int = 200,
-        headers: Optional[Dict[str, str]] = None
+        headers: Optional[Dict[str, str]] = None,
     ) -> None:
+        "Initialize the file response."
         super().__init__("", status_code, headers)
-        self.path: str = path
-        self.filename: str = filename or path.split("/")[-1]
+        self.path: str = str(path)
+        self.filename: str = filename or str(path).split("/")[-1]
         self.content_type: str = "application/octet-stream"
         self.headers["content-disposition"] = f'attachment; filename="{self.filename}"'
 
     def render(self) -> bytes:
+        "Read file content up to 10MB limit."
         # Safety rail: Prevent OOM crashes by capping in-memory file serving to 10MB
         max_size = 10 * 1024 * 1024
         if os.path.exists(self.path) and os.path.getsize(self.path) > max_size:
