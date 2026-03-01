@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://pypi.org/project/ignyx/">
-    <img src="https://badge.fury.io/py/ignyx.svg" alt="PyPI version">
+    <img src="https://img.shields.io/pypi/v/ignyx" alt="PyPI version">
   </a>
   <a href="https://pepy.tech/projects/ignyx">
     <img src="https://static.pepy.tech/personalized-badge/ignyx?period=total&units=INTERNATIONAL_SYSTEM&left_color=grey&right_color=brightgreen&left_text=Downloads" alt="Downloads">
