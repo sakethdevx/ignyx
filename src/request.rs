@@ -170,7 +170,7 @@ pub fn json_value_to_py(py: Python<'_>, value: &serde_json::Value) -> PyResult<P
 /// Handles dicts, lists, strings, ints, floats, bools, None, and Pydantic models.
 /// This bypasses Python's `json` module entirely — serialization stays in Rust.
 pub fn py_to_json_value(
-    py: Python<'_>,
+    _py: Python<'_>,
     obj: &Bound<'_, pyo3::types::PyAny>,
 ) -> PyResult<serde_json::Value> {
     if obj.is_none() {
@@ -192,7 +192,7 @@ pub fn py_to_json_value(
         let list = obj.downcast::<PyList>()?;
         let mut arr = Vec::with_capacity(list.len());
         for item in list {
-            arr.push(py_to_json_value(py, &item)?);
+            arr.push(py_to_json_value(item.py(), &item)?);
         }
         Ok(serde_json::Value::Array(arr))
     } else if obj.is_instance_of::<PyDict>() {
@@ -200,13 +200,13 @@ pub fn py_to_json_value(
         let mut map = serde_json::Map::new();
         for (k, v) in dict {
             let key = k.extract::<String>()?;
-            map.insert(key, py_to_json_value(py, &v)?);
+            map.insert(key, py_to_json_value(v.py(), &v)?);
         }
         Ok(serde_json::Value::Object(map))
     } else if obj.hasattr("model_dump")? {
         // Pydantic BaseModel — call model_dump() to get a dict, then serialize natively
         let dict = obj.call_method0("model_dump")?;
-        py_to_json_value(py, &dict)
+        py_to_json_value(dict.py(), &dict)
     } else {
         // Fallback: convert to string representation
         Ok(serde_json::Value::String(obj.str()?.extract::<String>()?))
