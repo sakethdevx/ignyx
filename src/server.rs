@@ -553,8 +553,7 @@ async fn handle_request(
                     if let Ok(ref json_val) =
                         serde_json::from_slice::<serde_json::Value>(&body_bytes)
                     {
-                        if let Err(errors) =
-                            crate::handler::validate_json_schema(json_val, schema)
+                        if let Err(errors) = crate::handler::validate_json_schema(json_val, schema)
                         {
                             let error_body = serde_json::json!({
                                 "error": "Validation failed",
@@ -583,8 +582,7 @@ async fn handle_request(
                         ASYNCIO_LOOP.with(|cell| {
                             let mut loop_ref = cell.borrow_mut();
                             if loop_ref.is_none() {
-                                let new_loop_fn =
-                                    state_clone.py_refs.new_event_loop.clone_ref(py);
+                                let new_loop_fn = state_clone.py_refs.new_event_loop.clone_ref(py);
                                 if !new_loop_fn.is_none(py) {
                                     if let Ok(loop_obj) = new_loop_fn.bind(py).call0() {
                                         if let Ok(run_method) =

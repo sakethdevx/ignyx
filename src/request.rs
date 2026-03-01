@@ -169,7 +169,10 @@ pub fn json_value_to_py(py: Python<'_>, value: &serde_json::Value) -> PyResult<P
 /// Convert a Python object to a serde_json::Value for native serialization.
 /// Handles dicts, lists, strings, ints, floats, bools, None, and Pydantic models.
 /// This bypasses Python's `json` module entirely — serialization stays in Rust.
-pub fn py_to_json_value(py: Python<'_>, obj: &Bound<'_, pyo3::types::PyAny>) -> PyResult<serde_json::Value> {
+pub fn py_to_json_value(
+    py: Python<'_>,
+    obj: &Bound<'_, pyo3::types::PyAny>,
+) -> PyResult<serde_json::Value> {
     if obj.is_none() {
         Ok(serde_json::Value::Null)
     } else if obj.is_instance_of::<PyBool>() {
