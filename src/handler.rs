@@ -19,6 +19,52 @@ pub struct HandlerSignature {
     pub has_depends: bool,
     pub pydantic_body_model: Option<PyObject>,
     pub resolve_deps_fn: Option<PyObject>,
+    /// Cached JSON schema for pre-GIL structural validation
+    pub pydantic_json_schema: Option<serde_json::Value>,
+}
+
+/// Pre-GIL structural validation of JSON against a Pydantic model's schema.
+/// Checks required field presence without acquiring the Python GIL.
+/// Returns Ok(()) if validation passes, Err(errors) with detail list on failure.
+pub fn validate_json_schema(
+    value: &serde_json::Value,
+    schema: &serde_json::Value,
+) -> Result<(), Vec<serde_json::Value>> {
+    let mut errors = Vec::new();
+
+    if let Some("object") = schema.get("type").and_then(|t| t.as_str()) {
+        if !value.is_object() {
+            errors.push(serde_json::json!({
+                "type": "model_type",
+                "loc": [],
+                "msg": "Input should be a valid object"
+            }));
+            return Err(errors);
+        }
+
+        let obj = value.as_object().unwrap();
+
+        // Check required fields
+        if let Some(required) = schema.get("required").and_then(|r| r.as_array()) {
+            for field in required {
+                if let Some(name) = field.as_str() {
+                    if !obj.contains_key(name) {
+                        errors.push(serde_json::json!({
+                            "type": "missing",
+                            "loc": [name],
+                            "msg": "Field required"
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -211,12 +257,7 @@ pub(crate) fn call_python_handler(
                                 Err(ve) => {
                                     let err_obj = ve.value(py);
                                     let dt = if let Ok(em) = err_obj.call_method0("errors") {
-                                        state
-                                            .py_refs
-                                            .json_dumps
-                                            .bind(py)
-                                            .call1((em,))?
-                                            .extract::<String>()?
+                                        crate::request::py_to_json_string(py, &em)?
                                     } else {
                                         err_obj.str()?.extract::<String>()?
                                     };
@@ -442,33 +483,22 @@ pub(crate) fn call_python_handler(
         || actual.is_instance_of::<pyo3::types::PyInt>()
         || actual.is_instance_of::<pyo3::types::PyFloat>()
     {
-        let s: String = state
-            .py_refs
-            .json_dumps
-            .bind(py)
-            .call1((&actual,))?
-            .extract()?;
+        // Native Rust serialization — bypasses Python's json module
+        let s = crate::request::py_to_json_string(py, &actual)?;
         (s, "application/json".to_string())
     } else if actual.is_instance_of::<PyString>() {
         let s: String = actual.extract()?;
         if s.trim_start().starts_with('<') {
             (s, "text/html; charset=utf-8".to_string())
         } else {
-            let js: String = state
-                .py_refs
-                .json_dumps
-                .bind(py)
-                .call1((&actual,))?
-                .extract()?;
+            // Serialize string as JSON value (adds quotes)
+            let js = serde_json::to_string(&s)
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
             (js, "application/json".to_string())
         }
     } else {
-        let s: String = state
-            .py_refs
-            .json_dumps
-            .bind(py)
-            .call1((&actual,))?
-            .extract()?;
+        // Pydantic models and other objects — native Rust serialization
+        let s = crate::request::py_to_json_string(py, &actual)?;
         (s, "application/json".to_string())
     };
 

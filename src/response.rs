@@ -36,9 +36,8 @@ impl Response {
         data: &Bound<'_, pyo3::types::PyAny>,
         status_code: Option<u16>,
     ) -> PyResult<Self> {
-        // Use Python's json.dumps for reliable serialization
-        let json_mod = py.import("json")?;
-        let json_str: String = json_mod.call_method1("dumps", (data,))?.extract()?;
+        // Native Rust serialization — bypasses Python's json module
+        let json_str = crate::request::py_to_json_string(py, data)?;
         let mut headers = HashMap::new();
         headers.insert("content-type".to_string(), "application/json".to_string());
         Ok(Self {

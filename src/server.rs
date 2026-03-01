@@ -121,6 +121,7 @@ impl Server {
                     has_depends: false,
                     pydantic_body_model: None,
                     resolve_deps_fn: None,
+                    pydantic_json_schema: None,
                 });
             }
 
@@ -219,6 +220,18 @@ impl Server {
                 None
             };
 
+            // Cache: extract Pydantic JSON schema for pre-GIL structural validation
+            let pydantic_json_schema = if let Some(ref model) = pydantic_body_model {
+                model
+                    .call_method0(py, "model_json_schema")
+                    .ok()
+                    .and_then(|schema_dict| {
+                        crate::request::py_to_json_value(py, schema_dict.bind(py)).ok()
+                    })
+            } else {
+                None
+            };
+
             handlers[index] = HandlerSignature {
                 handler,
                 param_types,
@@ -227,6 +240,7 @@ impl Server {
                 has_depends,
                 pydantic_body_model,
                 resolve_deps_fn,
+                pydantic_json_schema,
             };
         }
 
@@ -235,12 +249,6 @@ impl Server {
             .ok()
             .and_then(|m| m.getattr("Request").ok())
             .map(|c| c.into());
-
-        let json_dumps = py
-            .import("json")
-            .ok()
-            .and_then(|m| m.getattr("dumps").ok())
-            .map(|f| f.into());
 
         let asyncio_mod = py.import("asyncio").ok().map(|m| m.into());
         let new_event_loop = asyncio_mod
@@ -259,7 +267,6 @@ impl Server {
             shutdown_handlers,
             py_refs: crate::pyref::PythonCachedRefs {
                 request_class: req_proxy_class.unwrap_or_else(|| py.None()),
-                json_dumps: json_dumps.unwrap_or_else(|| py.None()),
                 new_event_loop: new_event_loop.unwrap_or_else(|| py.None()),
                 set_event_loop: set_event_loop.unwrap_or_else(|| py.None()),
             },
@@ -472,7 +479,7 @@ async fn handle_request(
             let mut builder = HyperResponse::builder()
                 .status(200)
                 .header("content-type", "text/plain")
-                .header("server", "Ignyx/1.1.1");
+                .header("server", "Ignyx/2.2.0");
 
             if let Some(h) = custom_headers {
                 for (k, v) in h {
@@ -533,27 +540,67 @@ async fn handle_request(
             // to prevent holding up the Tokio runtime reactor with Python execution lock
             let state_clone = state.clone();
 
+            // Pre-GIL: fast schema validation (checks required fields without Python GIL)
+            let is_json_body = parts
+                .headers
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .map(|v| v.contains("application/json"))
+                .unwrap_or(false);
+
+            if is_json_body && !body_bytes.is_empty() {
+                if let Some(ref schema) = handler.pydantic_json_schema {
+                    if let Ok(ref json_val) =
+                        serde_json::from_slice::<serde_json::Value>(&body_bytes)
+                    {
+                        if let Err(errors) =
+                            crate::handler::validate_json_schema(json_val, schema)
+                        {
+                            let error_body = serde_json::json!({
+                                "error": "Validation failed",
+                                "detail": errors
+                            })
+                            .to_string();
+                            return Ok(HyperResponse::builder()
+                                .status(422)
+                                .header("content-type", "application/json")
+                                .header("server", "Ignyx/2.2.0")
+                                .body(Full::new(Bytes::from(error_body)))
+                                .unwrap());
+                        }
+                    }
+                }
+            }
+
             // Spawn blocking to decouple the Tokio reactor from Python GIL
             let result = tokio::task::spawn_blocking(move || {
                 Python::with_gil(|py| -> crate::handler::HandlerResult {
-                    // Ensure an asyncio event loop is set for this thread
-                    ASYNCIO_LOOP.with(|cell| {
-                        let mut loop_ref = cell.borrow_mut();
-                        if loop_ref.is_none() {
-                            let new_loop_fn = state_clone.py_refs.new_event_loop.clone_ref(py);
-                            if !new_loop_fn.is_none(py) {
-                                if let Ok(loop_obj) = new_loop_fn.bind(py).call0() {
-                                    if let Ok(run_method) =
-                                        loop_obj.getattr::<&str>("run_until_complete")
-                                    {
-                                        *loop_ref = Some((loop_obj.unbind(), run_method.unbind()));
+                    let handler = &state_clone.handlers[handler_index];
+
+                    // Only initialize asyncio event loop for async handlers
+                    // (avoids overhead for synchronous def handlers)
+                    if handler.is_async {
+                        ASYNCIO_LOOP.with(|cell| {
+                            let mut loop_ref = cell.borrow_mut();
+                            if loop_ref.is_none() {
+                                let new_loop_fn =
+                                    state_clone.py_refs.new_event_loop.clone_ref(py);
+                                if !new_loop_fn.is_none(py) {
+                                    if let Ok(loop_obj) = new_loop_fn.bind(py).call0() {
+                                        if let Ok(run_method) =
+                                            loop_obj.getattr::<&str>("run_until_complete")
+                                        {
+                                            *loop_ref =
+                                                Some((loop_obj.unbind(), run_method.unbind()));
+                                        }
                                     }
                                 }
                             }
-                        }
-                    });
+                        });
+                    }
 
-                    let handler = &state_clone.handlers[handler_index];
+                    // Sync handlers: securely wrapped in spawn_blocking — cannot block Tokio reactor
+                    // Async handlers: coroutine is awaited via cached per-thread asyncio event loop
                     match crate::handler::call_python_handler(
                         py,
                         handler,
@@ -583,7 +630,7 @@ async fn handle_request(
                     let mut builder = HyperResponse::builder()
                         .status(status)
                         .header("content-type", &content_type)
-                        .header("server", "Ignyx/2.1.4");
+                        .header("server", "Ignyx/2.2.0");
 
                     if let Some(h) = custom_headers {
                         for (k, v) in h {
@@ -621,7 +668,7 @@ async fn handle_request(
                     let response = HyperResponse::builder()
                         .status(500)
                         .header("content-type", "application/json")
-                        .header("server", "Ignyx/1.1.2")
+                        .header("server", "Ignyx/2.2.0")
                         .body(Full::new(Bytes::from(error_body)))
                         .unwrap();
                     return Ok(response);
@@ -652,6 +699,7 @@ async fn handle_request(
                     has_depends: false,
                     pydantic_body_model: None,
                     resolve_deps_fn: None,
+                    pydantic_json_schema: None,
                 };
 
                 crate::handler::call_python_handler(
@@ -676,7 +724,7 @@ async fn handle_request(
             let mut builder = HyperResponse::builder()
                 .status(status)
                 .header("content-type", &content_type)
-                .header("server", "Ignyx/1.1.2");
+                .header("server", "Ignyx/2.2.0");
 
             if let Some(h) = custom_headers {
                 for (k, v) in h {
@@ -709,7 +757,7 @@ async fn handle_request(
     let response = HyperResponse::builder()
         .status(404)
         .header("content-type", "application/json")
-        .header("server", "Ignyx/1.1.1")
+        .header("server", "Ignyx/2.2.0")
         .body(Full::new(Bytes::from(body)))
         .unwrap();
 

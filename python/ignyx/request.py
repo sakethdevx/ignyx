@@ -1,4 +1,3 @@
-import json
 from collections import UserDict
 from typing import Any, Optional
 
@@ -34,28 +33,69 @@ class Headers(UserDict):
 class Request:
     """
     Python wrapper around the Rust Request object.
-    Provides typed, native Python dictionary access to request properties.
+    Uses lazy property access — headers, query params, and path params stay
+    in Rust memory and only cross the FFI boundary when explicitly accessed.
     """
+
+    __slots__ = (
+        "_rust_req",
+        "method",
+        "path",
+        "_body_bytes",
+        "_headers_cache",
+        "_query_params_cache",
+        "_path_params_cache",
+        "_json_cache",
+        "_text_cache",
+    )
 
     def __init__(self, rust_req: _RustRequest) -> None:
         "Initialize the request wrapper."
         self._rust_req: _RustRequest = rust_req
-
-        # Parse JSON blocks eagerly to native Python dictionaries
-        raw_headers = json.loads(rust_req.headers) if isinstance(rust_req.headers, str) else {}
-        self.headers: Headers = Headers(raw_headers)
-        self.query_params: dict[str, Any] = (
-            json.loads(rust_req.query_params) if isinstance(rust_req.query_params, str) else {}
-        )
-        self.path_params: dict[str, Any] = (
-            json.loads(rust_req.path_params) if isinstance(rust_req.path_params, str) else {}
-        )
-
         self.method: str = rust_req.method
         self.path: str = rust_req.path
         self._body_bytes: bytes = rust_req.body
+        self._headers_cache: Optional[Headers] = None
+        self._query_params_cache: Optional[dict[str, Any]] = None
+        self._path_params_cache: Optional[dict[str, Any]] = None
         self._json_cache: Optional[dict[str, Any]] = None
         self._text_cache: Optional[str] = None
+
+    @property
+    def headers(self) -> Headers:
+        """Lazy: headers stay in Rust memory until first access."""
+        if self._headers_cache is None:
+            self._headers_cache = Headers(self._rust_req.get_all_headers())
+        return self._headers_cache
+
+    @headers.setter
+    def headers(self, value: Any) -> None:
+        "Set headers (accepts dict or Headers)."
+        self._headers_cache = value if isinstance(value, Headers) else Headers(value)
+
+    @property
+    def query_params(self) -> dict[str, Any]:
+        """Lazy: query params stay in Rust memory until first access."""
+        if self._query_params_cache is None:
+            self._query_params_cache = dict(self._rust_req.get_all_query_params())
+        return self._query_params_cache
+
+    @query_params.setter
+    def query_params(self, value: dict[str, Any]) -> None:
+        "Set query params."
+        self._query_params_cache = value
+
+    @property
+    def path_params(self) -> dict[str, Any]:
+        """Lazy: path params stay in Rust memory until first access."""
+        if self._path_params_cache is None:
+            self._path_params_cache = dict(self._rust_req.get_all_path_params())
+        return self._path_params_cache
+
+    @path_params.setter
+    def path_params(self, value: dict[str, Any]) -> None:
+        "Set path params."
+        self._path_params_cache = value
 
     def text(self) -> str:
         """Get the body as a UTF-8 string."""
@@ -66,6 +106,8 @@ class Request:
     def json(self) -> dict[str, Any]:
         """Parse the body as JSON."""
         if self._json_cache is None:
+            import json
+
             self._json_cache = json.loads(self.text())
         return self._json_cache
 

@@ -58,9 +58,11 @@ Ignyx is a next-generation Python web framework engineered for maximum throughpu
 ## Installation
 
 ```bash
-pip install ignyx==2.1.4
+pip install ignyx==2.2.0
 ```
+
 Or with `uv`:
+
 ```bash
 uv add ignyx
 ```
@@ -99,6 +101,7 @@ class User(BaseModel):
 async def create_user(user: User):
     return {"status": "success", "data": user.model_dump()}
 ```
+
 </details>
 
 <details>
@@ -113,6 +116,7 @@ app = Ignyx()
 async def get_user(id: int, format: str = "json"):
     return {"id": id, "format": format}
 ```
+
 </details>
 
 <details>
@@ -134,6 +138,7 @@ def get_db():
 async def get_users(db = Depends(get_db)):
     return db.query("SELECT * FROM users")
 ```
+
 </details>
 
 <details>
@@ -151,21 +156,22 @@ async def echo_server(ws):
         data = await ws.receive_text()
         await ws.send_text(f"Echo: {data}")
 ```
+
 </details>
 
 ## Comparison vs FastAPI
 
-| Feature                | Ignyx | FastAPI |
-| ---------------------- | ----- | ------- |
-| Pydantic v2 validation | ✅    | ✅      |
-| Async/Await            | ✅    | ✅      |
-| Dependency Injection   | ✅    | ✅      |
-| WebSockets             | ✅    | ✅      |
-| Modular Routers        | ✅    | ✅      |
-| Performance (req/s)    | ~50k  | ~6k     |
-| ASGI overhead          | ❌ None | ✅ Yes |
-| Hot Reload             | ✅ | ✅     |
-| Native Rust Core       | ✅ | ❌     |
+| Feature                | Ignyx   | FastAPI |
+| ---------------------- | ------- | ------- |
+| Pydantic v2 validation | ✅      | ✅      |
+| Async/Await            | ✅      | ✅      |
+| Dependency Injection   | ✅      | ✅      |
+| WebSockets             | ✅      | ✅      |
+| Modular Routers        | ✅      | ✅      |
+| Performance (req/s)    | ~50k    | ~6k     |
+| ASGI overhead          | ❌ None | ✅ Yes  |
+| Hot Reload             | ✅      | ✅      |
+| Native Rust Core       | ✅      | ❌      |
 
 ## ⭐ Star History
 
