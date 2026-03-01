@@ -52,4 +52,4 @@ __all__ = [
     "CORSMiddleware",
     "ErrorHandlerMiddleware",
 ]
-__version__ = "2.2.1"
+__version__ = "2.2.2"

@@ -58,7 +58,7 @@ Ignyx is a next-generation Python web framework engineered for maximum throughpu
 ## Installation
 
 ```bash
-pip install ignyx==2.2.1
+pip install ignyx==2.2.2
 ```
 
 Or with `uv`:
