@@ -100,14 +100,8 @@ impl RustMiddlewares {
 
             if entry.len() >= config.max_requests as usize {
                 let mut headers = HashMap::new();
-                headers.insert(
-                    "retry-after".to_string(),
-                    config.window_secs.to_string(),
-                );
-                headers.insert(
-                    "content-type".to_string(),
-                    "application/json".to_string(),
-                );
+                headers.insert("retry-after".to_string(), config.window_secs.to_string());
+                headers.insert("content-type".to_string(), "application/json".to_string());
                 return Err((
                     429,
                     r#"{"detail":"Rate limit exceeded"}"#.to_string(),
@@ -121,10 +115,7 @@ impl RustMiddlewares {
     }
 
     /// Apply CORS headers to a hyper HeaderMap (mutates in-place).
-    pub fn apply_cors_headers(
-        &self,
-        response_headers: &mut hyper::header::HeaderMap,
-    ) {
+    pub fn apply_cors_headers(&self, response_headers: &mut hyper::header::HeaderMap) {
         if let Some(ref config) = self.cors {
             let insert = |map: &mut hyper::header::HeaderMap, name: &str, value: &str| {
                 if let Ok(v) = hyper::header::HeaderValue::from_str(value) {
@@ -150,11 +141,7 @@ impl RustMiddlewares {
                 &config.allow_headers.join(", "),
             );
             if config.allow_credentials {
-                insert(
-                    response_headers,
-                    "access-control-allow-credentials",
-                    "true",
-                );
+                insert(response_headers, "access-control-allow-credentials", "true");
             }
             insert(
                 response_headers,

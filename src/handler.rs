@@ -5,7 +5,13 @@ use std::collections::HashMap;
 /// Output from a Python handler — either a full response or a streaming one.
 pub enum HandlerOutput {
     /// (body, content_type, status, headers, bg_task)
-    Full(String, String, u16, Option<HashMap<String, String>>, Option<PyObject>),
+    Full(
+        String,
+        String,
+        u16,
+        Option<HashMap<String, String>>,
+        Option<PyObject>,
+    ),
     /// (content_type, status, headers, python_iterator, is_async)
     Streaming(String, u16, Option<HashMap<String, String>>, PyObject, bool),
 }
@@ -393,7 +399,13 @@ pub(crate) fn call_python_handler(
                                 }
                             }
                             let eb = serde_json::json!({"detail": dt}).to_string();
-                            return Ok(HandlerOutput::Full(eb, "application/json".to_string(), sc, ch, None));
+                            return Ok(HandlerOutput::Full(
+                                eb,
+                                "application/json".to_string(),
+                                sc,
+                                ch,
+                                None,
+                            ));
                         }
                     }
                 }
@@ -426,7 +438,13 @@ pub(crate) fn call_python_handler(
             }
         }
 
-        return Ok(HandlerOutput::Streaming(ct, status, resp_headers, iterator, is_async_iter));
+        return Ok(HandlerOutput::Streaming(
+            ct,
+            status,
+            resp_headers,
+            iterator,
+            is_async_iter,
+        ));
     }
 
     // After Middlewares
@@ -503,7 +521,13 @@ pub(crate) fn call_python_handler(
             } else {
                 ch
             };
-        return Ok(HandlerOutput::Full(bs, ct, s_c, resp_headers, injected_task));
+        return Ok(HandlerOutput::Full(
+            bs,
+            ct,
+            s_c,
+            resp_headers,
+            injected_task,
+        ));
     }
 
     let (bs, ct) = if actual.is_instance_of::<PyDict>()

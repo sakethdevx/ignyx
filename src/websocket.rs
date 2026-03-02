@@ -1,10 +1,10 @@
-use pyo3::prelude::*;
-use std::sync::Arc;
 use crate::server::{AppBody, ServerState};
 use futures_util::{SinkExt, StreamExt};
 use hyper::body::Incoming;
 use hyper::{Request as HyperRequest, Response as HyperResponse};
+use pyo3::prelude::*;
 use std::convert::Infallible;
+use std::sync::Arc;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 /// Backpressure-aware channel capacity for WebSocket messages.
@@ -54,8 +54,10 @@ pub(crate) async fn handle_websocket(
 
                     // Create bounded mpsc channels for Python <-> Rust WebSocket bridging
                     // This provides backpressure: if one side is slow, the other blocks (bounded capacity)
-                    let (send_tx, mut send_rx) = tokio::sync::mpsc::channel::<String>(WS_CHANNEL_CAPACITY);
-                    let (recv_tx, recv_rx) = tokio::sync::mpsc::channel::<String>(WS_CHANNEL_CAPACITY);
+                    let (send_tx, mut send_rx) =
+                        tokio::sync::mpsc::channel::<String>(WS_CHANNEL_CAPACITY);
+                    let (recv_tx, recv_rx) =
+                        tokio::sync::mpsc::channel::<String>(WS_CHANNEL_CAPACITY);
                     let recv_rx = Arc::new(std::sync::Mutex::new(recv_rx));
                     let (close_tx, mut close_rx) = tokio::sync::mpsc::channel::<u16>(1);
 

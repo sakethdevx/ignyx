@@ -43,9 +43,7 @@ impl http_body::Body for AppBody {
         match self.get_mut() {
             AppBody::Full(inner) => Pin::new(inner).poll_frame(cx),
             AppBody::Stream { rx } => match rx.poll_recv(cx) {
-                Poll::Ready(Some(chunk)) => {
-                    Poll::Ready(Some(Ok(http_body::Frame::data(chunk))))
-                }
+                Poll::Ready(Some(chunk)) => Poll::Ready(Some(Ok(http_body::Frame::data(chunk)))),
                 Poll::Ready(None) => Poll::Ready(None),
                 Poll::Pending => Poll::Pending,
             },
@@ -318,8 +316,7 @@ impl Server {
         let mut python_middlewares: Vec<PyObject> = Vec::new();
 
         for mw in middlewares {
-            let (cors, rl, gz, keep) =
-                crate::middleware::extract_rust_middleware(py, &mw);
+            let (cors, rl, gz, keep) = crate::middleware::extract_rust_middleware(py, &mw);
             if cors.is_some() {
                 cors_config = cors;
             }
@@ -754,12 +751,19 @@ async fn handle_request(
             .unwrap();
 
             match result {
-                Ok(crate::handler::HandlerOutput::Full(body, content_type, status, custom_headers, bg_task)) => {
+                Ok(crate::handler::HandlerOutput::Full(
+                    body,
+                    content_type,
+                    status,
+                    custom_headers,
+                    bg_task,
+                )) => {
                     let body_bytes = Bytes::from(body);
 
                     // Rust GZip compression (no GIL)
-                    let (final_body, is_gzipped) = if let Some(compressed) =
-                        state.rust_middlewares.maybe_gzip(&body_bytes, &accept_encoding)
+                    let (final_body, is_gzipped) = if let Some(compressed) = state
+                        .rust_middlewares
+                        .maybe_gzip(&body_bytes, &accept_encoding)
                     {
                         (Bytes::from(compressed), true)
                     } else {
@@ -802,7 +806,13 @@ async fn handle_request(
 
                     return Ok(response);
                 }
-                Ok(crate::handler::HandlerOutput::Streaming(content_type, status, custom_headers, iterator, is_async)) => {
+                Ok(crate::handler::HandlerOutput::Streaming(
+                    content_type,
+                    status,
+                    custom_headers,
+                    iterator,
+                    is_async,
+                )) => {
                     // ── Streaming / SSE response path ────────────────────────
                     let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(32);
 
@@ -851,8 +861,7 @@ async fn handle_request(
                                                     if let Ok(chunk_str) =
                                                         chunk_obj.extract::<String>()
                                                     {
-                                                        let chunk_bytes =
-                                                            Bytes::from(chunk_str);
+                                                        let chunk_bytes = Bytes::from(chunk_str);
                                                         // Release GIL while waiting for channel
                                                         let send_ok = py.allow_threads(|| {
                                                             tx.blocking_send(chunk_bytes).is_ok()
@@ -882,8 +891,7 @@ async fn handle_request(
                                     loop {
                                         match sync_iter.call_method0("__next__") {
                                             Ok(chunk_obj) => {
-                                                if let Ok(chunk_str) =
-                                                    chunk_obj.extract::<String>()
+                                                if let Ok(chunk_str) = chunk_obj.extract::<String>()
                                                 {
                                                     let chunk_bytes = Bytes::from(chunk_str);
                                                     let send_ok = py.allow_threads(|| {
@@ -992,7 +1000,14 @@ async fn handle_request(
         .await
         .unwrap();
 
-        if let Ok(crate::handler::HandlerOutput::Full(body, content_type, status, custom_headers, bg_task)) = result {
+        if let Ok(crate::handler::HandlerOutput::Full(
+            body,
+            content_type,
+            status,
+            custom_headers,
+            bg_task,
+        )) = result
+        {
             let mut builder = HyperResponse::builder()
                 .status(status)
                 .header("content-type", &content_type)
