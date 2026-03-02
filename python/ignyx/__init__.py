@@ -5,7 +5,7 @@ A high-performance Python web framework powered by Rust.
 
 from ignyx._core import Request, Response
 from ignyx.app import Ignyx
-from ignyx.depends import BackgroundTask, Depends
+from ignyx.depends import BackgroundTask, BackgroundTasks, Depends
 from ignyx.exceptions import HTTPException
 from ignyx.middleware import (
     AccessLogMiddleware,
@@ -46,6 +46,7 @@ __all__ = [
     "EventSourceResponse",
     "UploadFile",
     "BackgroundTask",
+    "BackgroundTasks",
     "HTTPException",
     "OAuth2PasswordBearer",
     "APIKeyHeader",
@@ -58,4 +59,4 @@ __all__ = [
     "ErrorHandlerMiddleware",
     "GZipMiddleware",
 ]
-__version__ = "2.4.0"
+__version__ = "2.5.0"

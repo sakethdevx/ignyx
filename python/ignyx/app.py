@@ -8,6 +8,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 from ignyx._core import Server
+from ignyx.depends import BackgroundTask, BackgroundTasks
 from ignyx.middleware import ErrorHandlerMiddleware, Middleware
 from ignyx.openapi import (
     REDOC_HTML,
@@ -35,7 +36,7 @@ class Ignyx:
     def __init__(
         self,
         title: str = "Ignyx",
-        version: str = "2.4.0",
+        version: str = "2.5.0",
         debug: bool = False,
         description: str = "",
         docs_url: str = "/docs",
@@ -103,11 +104,29 @@ class Ignyx:
         "Create a dispatch wrapper for sync or async handlers."
         from functools import wraps
 
+        # Pre-inspect the handler signature to know if it expects BackgroundTasks
+        try:
+            sig = inspect.signature(handler)
+            bg_params: List[str] = [
+                name
+                for name, param in sig.parameters.items()
+                if param.annotation in (BackgroundTasks, BackgroundTask)
+            ]
+        except (ValueError, TypeError):
+            bg_params = []
+
         if inspect.iscoroutinefunction(handler):
 
             @wraps(handler)
             async def async_dispatch(*args: Any, **kw: Any) -> Any:
                 request = kw.get("request") or (args[0] if args else None)
+                # Inject BackgroundTasks instances
+                bg_instances: List[BackgroundTasks] = []
+                for param_name in bg_params:
+                    if param_name not in kw:
+                        instance = BackgroundTasks()
+                        kw[param_name] = instance
+                        bg_instances.append(instance)
                 try:
                     res = await handler(*args, **kw)
                     if hasattr(res, "status_code"):
@@ -121,6 +140,10 @@ class Ignyx:
                     if handled:
                         return handled
                     raise exc
+                finally:
+                    # Fire background tasks after response is ready
+                    for bg in bg_instances:
+                        bg.execute()
 
             return async_dispatch
         else:
@@ -128,6 +151,13 @@ class Ignyx:
             @wraps(handler)
             def sync_dispatch(*args: Any, **kw: Any) -> Any:
                 request = kw.get("request") or (args[0] if args else None)
+                # Inject BackgroundTasks instances
+                bg_instances2: List[BackgroundTasks] = []
+                for param_name in bg_params:
+                    if param_name not in kw:
+                        instance2 = BackgroundTasks()
+                        kw[param_name] = instance2
+                        bg_instances2.append(instance2)
                 try:
                     res = handler(*args, **kw)
                     if hasattr(res, "status_code"):
@@ -141,6 +171,10 @@ class Ignyx:
                     if handled:
                         return handled
                     raise exc
+                finally:
+                    # Fire background tasks after response is ready
+                    for bg in bg_instances2:
+                        bg.execute()
 
             return sync_dispatch
 
@@ -159,6 +193,7 @@ class Ignyx:
                 "method": method,
                 "path": path,
                 "handler": handler,
+                "dispatch": dispatch,
                 "name": getattr(handler, "__name__", "unknown"),
                 **kwargs,
             }
@@ -166,9 +201,16 @@ class Ignyx:
         if method != "OPTIONS" and not any(
             r["path"] == path and r["method"] == "OPTIONS" for r in self._routes
         ):
-            self._server.add_route("OPTIONS", path, self._create_dispatch(lambda request: ""))
+            opts_dispatch = self._create_dispatch(lambda request: "")
+            self._server.add_route("OPTIONS", path, opts_dispatch)
             self._routes.append(
-                {"method": "OPTIONS", "path": path, "handler": lambda req: "", "name": "options"}
+                {
+                    "method": "OPTIONS",
+                    "path": path,
+                    "handler": lambda req: "",
+                    "dispatch": opts_dispatch,
+                    "name": "options",
+                }
             )
         return handler
 
@@ -312,6 +354,41 @@ class Ignyx:
     def dependency_overrides(self) -> Dict[Callable[..., Any], Any]:
         """Get the dependency overrides dict (for testing)."""
         return self._dependency_overrides
+
+    def asgi(self) -> Any:
+        """
+        Return a standard ASGI application callable for this Ignyx app.
+
+        Enterprise deployments that mandate Gunicorn or Uvicorn as the process
+        manager can call ``app.asgi()`` and pass the result to the ASGI server
+        instead of using ``app.run()``.  **All** Ignyx features — middleware,
+        dependency injection, background tasks, OpenAPI — work identically.
+
+        Example (``main.py``)::
+
+            from ignyx import Ignyx
+
+            app = Ignyx()
+
+            @app.get("/")
+            def root():
+                return {"message": "Hello from Ignyx via Uvicorn!"}
+
+            asgi_app = app.asgi()
+
+        Run with Uvicorn::
+
+            uvicorn main:asgi_app --workers 4
+
+        Run with Gunicorn + UvicornWorker::
+
+            gunicorn main:asgi_app -w 4 -k uvicorn.workers.UvicornWorker
+
+        """
+        from ignyx.asgi import IgnyxASGI
+
+        self._register_docs_routes()
+        return IgnyxASGI(self)
 
     def run(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = False) -> None:
         """Start the Ignyx server."""
