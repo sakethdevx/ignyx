@@ -1,6 +1,11 @@
 """
 WebSocket support for Ignyx.
 Provides an async WebSocket wrapper that mirrors Starlette's WebSocket API.
+
+The Rust server uses bounded channels (capacity=64) for message passing
+between the WebSocket I/O tasks and the Python handler.  This provides
+built-in backpressure: if the consumer is slow, the producer automatically
+awaits until buffer space is available, preventing unbounded memory growth.
 """
 
 import json
@@ -11,6 +16,10 @@ class WebSocket:
     """
     Async WebSocket wrapper for Ignyx.
     Provides accept(), send_text(), receive_text(), send_json(), receive_json(), close().
+
+    Backpressure is handled transparently by the Rust transport layer:
+    - send_text() will block if the outgoing buffer is full (64 messages)
+    - receive_text() will block until a message arrives
 
     The underlying transport is managed by the Rust server via callback functions
     that are injected when the WebSocket connection is established.

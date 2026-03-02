@@ -2,13 +2,15 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyString, PyTuple};
 use std::collections::HashMap;
 
-pub type HandlerResult = PyResult<(
-    String,
-    String,
-    u16,
-    Option<HashMap<String, String>>,
-    Option<PyObject>,
-)>;
+/// Output from a Python handler — either a full response or a streaming one.
+pub enum HandlerOutput {
+    /// (body, content_type, status, headers, bg_task)
+    Full(String, String, u16, Option<HashMap<String, String>>, Option<PyObject>),
+    /// (content_type, status, headers, python_iterator, is_async)
+    Streaming(String, u16, Option<HashMap<String, String>>, PyObject, bool),
+}
+
+pub type HandlerResult = PyResult<HandlerOutput>;
 
 /// Pre-computed signature for a Python handler
 pub struct HandlerSignature {
@@ -391,7 +393,7 @@ pub(crate) fn call_python_handler(
                                 }
                             }
                             let eb = serde_json::json!({"detail": dt}).to_string();
-                            return Ok((eb, "application/json".to_string(), sc, ch, None));
+                            return Ok(HandlerOutput::Full(eb, "application/json".to_string(), sc, ch, None));
                         }
                     }
                 }
@@ -399,6 +401,33 @@ pub(crate) fn call_python_handler(
             }
         }
     };
+
+    // ── Streaming fast-path (skip after-middlewares) ───────────────────
+    if result.bind(py).hasattr("__ignyx_streaming__")? {
+        let bound = result.bind(py);
+        let ct: String = bound.getattr("content_type")?.extract()?;
+        let status: u16 = bound.getattr("status_code")?.extract()?;
+        let body_iter = bound.getattr("body_iterator")?;
+        let is_async_iter = body_iter.hasattr("__aiter__")?;
+        let iterator = body_iter.unbind();
+
+        let mut resp_headers: Option<HashMap<String, String>> = None;
+        if let Ok(hdict) = bound.getattr("headers") {
+            if let Ok(dict) = hdict.downcast::<PyDict>() {
+                let mut hmap = HashMap::new();
+                for (k, v) in dict {
+                    if let (Ok(ks), Ok(vs)) = (k.extract::<String>(), v.extract::<String>()) {
+                        hmap.insert(ks, vs);
+                    }
+                }
+                if !hmap.is_empty() {
+                    resp_headers = Some(hmap);
+                }
+            }
+        }
+
+        return Ok(HandlerOutput::Streaming(ct, status, resp_headers, iterator, is_async_iter));
+    }
 
     // After Middlewares
     let mut final_res = result;
@@ -474,7 +503,7 @@ pub(crate) fn call_python_handler(
             } else {
                 ch
             };
-        return Ok((bs, ct, s_c, resp_headers, injected_task));
+        return Ok(HandlerOutput::Full(bs, ct, s_c, resp_headers, injected_task));
     }
 
     let (bs, ct) = if actual.is_instance_of::<PyDict>()
@@ -502,5 +531,5 @@ pub(crate) fn call_python_handler(
         (s, "application/json".to_string())
     };
 
-    Ok((bs, ct, sc, ch, injected_task))
+    Ok(HandlerOutput::Full(bs, ct, sc, ch, injected_task))
 }

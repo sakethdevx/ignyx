@@ -183,3 +183,21 @@ class AccessLogMiddleware(Middleware):
 
         self.logger.info(f"{request.method} {request.path} {status} {duration:.1f}ms")
         return response
+
+
+class GZipMiddleware(Middleware):
+    """
+    GZip compression middleware.
+
+    When added, responses larger than ``minimum_size`` bytes are compressed
+    with GZip **in Rust** (zero Python overhead).  The Python object is only
+    used as a configuration carrier — the Rust server extracts ``minimum_size``
+    at startup and performs the actual compression natively.
+
+    Usage:
+        app.add_middleware(GZipMiddleware(minimum_size=500))
+    """
+
+    def __init__(self, minimum_size: int = 500) -> None:
+        "Initialize GZip middleware."
+        self.minimum_size = minimum_size

@@ -1,19 +1,21 @@
 use pyo3::prelude::*;
 use std::sync::Arc;
-// use tokio::net::TcpStream; // Removed unused
-use crate::server::ServerState;
-use bytes::Bytes;
+use crate::server::{AppBody, ServerState};
 use futures_util::{SinkExt, StreamExt};
-use http_body_util::Full;
 use hyper::body::Incoming;
 use hyper::{Request as HyperRequest, Response as HyperResponse};
 use std::convert::Infallible;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
+/// Backpressure-aware channel capacity for WebSocket messages.
+/// When the channel is full, the sending side will await (or block),
+/// preventing unbounded memory growth from slow consumers.
+const WS_CHANNEL_CAPACITY: usize = 64;
+
 pub(crate) async fn handle_websocket(
     req: HyperRequest<Incoming>,
     state: Arc<ServerState>,
-) -> Result<HyperResponse<Full<Bytes>>, Infallible> {
+) -> Result<HyperResponse<AppBody>, Infallible> {
     // Find matching WebSocket route — clone handler with GIL
     let ws_handler_clone: Option<PyObject> = Python::with_gil(|py| {
         for (ws_path, ws_h) in &state.ws_routes {
@@ -50,11 +52,12 @@ pub(crate) async fn handle_websocket(
 
                     let (mut ws_write, mut ws_read) = ws_stream.split();
 
-                    // Create mpsc channels for Python <-> Rust WebSocket bridging
-                    let (send_tx, mut send_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-                    let (recv_tx, recv_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                    // Create bounded mpsc channels for Python <-> Rust WebSocket bridging
+                    // This provides backpressure: if one side is slow, the other blocks (bounded capacity)
+                    let (send_tx, mut send_rx) = tokio::sync::mpsc::channel::<String>(WS_CHANNEL_CAPACITY);
+                    let (recv_tx, recv_rx) = tokio::sync::mpsc::channel::<String>(WS_CHANNEL_CAPACITY);
                     let recv_rx = Arc::new(std::sync::Mutex::new(recv_rx));
-                    let (close_tx, mut close_rx) = tokio::sync::mpsc::unbounded_channel::<u16>();
+                    let (close_tx, mut close_rx) = tokio::sync::mpsc::channel::<u16>(1);
 
                     // Spawn a task to forward outgoing messages from Python to the WebSocket
                     let write_task = tokio::spawn(async move {
@@ -88,7 +91,8 @@ pub(crate) async fn handle_websocket(
                         while let Some(Ok(msg)) = ws_read.next().await {
                             match msg {
                                 WsMessage::Text(text) => {
-                                    let _ = recv_tx_clone.send(text.to_string());
+                                    // Backpressure: if Python is slow consuming, this awaits
+                                    let _ = recv_tx_clone.send(text.to_string()).await;
                                 }
                                 WsMessage::Close(_) => break,
                                 _ => {}
@@ -131,7 +135,8 @@ pub(crate) async fn handle_websocket(
                                 None,
                                 move |args: &pyo3::Bound<'_, pyo3::types::PyTuple>, _kwargs: Option<&pyo3::Bound<'_, pyo3::types::PyDict>>| -> PyResult<()> {
                                     let text: String = args.get_item(0)?.extract()?;
-                                    let _ = send_tx_inner.send(text);
+                                    // blocking_send respects backpressure (bounded channel)
+                                    let _ = send_tx_inner.blocking_send(text);
                                     Ok(())
                                 },
                             ).unwrap();
@@ -157,7 +162,7 @@ pub(crate) async fn handle_websocket(
                                 None,
                                 move |args: &pyo3::Bound<'_, pyo3::types::PyTuple>, _kwargs: Option<&pyo3::Bound<'_, pyo3::types::PyDict>>| -> PyResult<()> {
                                     let code: u16 = args.get_item(0).and_then(|v| v.extract()).unwrap_or(1000);
-                                    let _ = close_tx_inner.send(code);
+                                    let _ = close_tx_inner.blocking_send(code);
                                     Ok(())
                                 },
                             ).unwrap();
@@ -207,13 +212,12 @@ pub(crate) async fn handle_websocket(
             }
         });
 
-        // Return 101 Switching Protocols
         let response = HyperResponse::builder()
             .status(101)
             .header("upgrade", "websocket")
             .header("connection", "Upgrade")
             .header("sec-websocket-accept", accept_value)
-            .body(Full::new(Bytes::new()))
+            .body(AppBody::full(""))
             .unwrap();
 
         return Ok(response);
@@ -222,7 +226,7 @@ pub(crate) async fn handle_websocket(
     // Fallback: This is not actually reached when called properly, but needed for types.
     let response = HyperResponse::builder()
         .status(404)
-        .body(Full::new(Bytes::new()))
+        .body(AppBody::full(""))
         .unwrap();
 
     Ok(response)

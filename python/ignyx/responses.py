@@ -135,3 +135,69 @@ class FileResponse(BaseResponse):
 
         with open(self.path, "rb") as f:
             return f.read()
+
+
+class StreamingResponse(BaseResponse):
+    """
+    Returns a streaming response with chunked transfer encoding.
+    Accepts a sync or async iterator/generator that yields string chunks.
+
+    Crucial for AI/LLM token streaming and large data exports.
+
+    Usage:
+        @app.get("/stream")
+        async def stream():
+            async def generate():
+                for i in range(10):
+                    yield f"chunk {i}\\n"
+                    await asyncio.sleep(0.1)
+            return StreamingResponse(generate(), media_type="text/plain")
+    """
+
+    __ignyx_streaming__ = True
+
+    def __init__(
+        self,
+        content: Any,
+        status_code: int = 200,
+        headers: Optional[Dict[str, str]] = None,
+        media_type: str = "application/octet-stream",
+    ) -> None:
+        "Initialize the streaming response."
+        super().__init__("", status_code, headers)
+        self.content_type = media_type
+        self.body_iterator = content
+
+
+class EventSourceResponse(BaseResponse):
+    """
+    Returns a Server-Sent Events (SSE) streaming response.
+    Accepts a sync or async iterator/generator that yields SSE event strings.
+
+    Each yielded chunk should follow the SSE protocol format:
+        "data: <payload>\\n\\n"
+
+    Usage:
+        @app.get("/events")
+        async def events():
+            async def generate():
+                for i in range(10):
+                    yield f"data: token {i}\\n\\n"
+                    await asyncio.sleep(0.5)
+            return EventSourceResponse(generate())
+    """
+
+    __ignyx_streaming__ = True
+
+    def __init__(
+        self,
+        content: Any,
+        status_code: int = 200,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> None:
+        "Initialize the SSE response."
+        super().__init__("", status_code, headers)
+        self.content_type = "text/event-stream"
+        self.body_iterator = content
+        self.headers["cache-control"] = "no-cache"
+        self.headers["connection"] = "keep-alive"

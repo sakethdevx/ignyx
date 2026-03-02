@@ -11,15 +11,18 @@ from ignyx.middleware import (
     AccessLogMiddleware,
     CORSMiddleware,
     ErrorHandlerMiddleware,
+    GZipMiddleware,
     Middleware,
     RateLimitMiddleware,
 )
 from ignyx.responses import (
+    EventSourceResponse,
     FileResponse,
     HTMLResponse,
     JSONResponse,
     PlainTextResponse,
     RedirectResponse,
+    StreamingResponse,
 )
 from ignyx.router import Router
 from ignyx.security import APIKeyHeader, HTTPBasic, OAuth2PasswordBearer
@@ -39,6 +42,8 @@ __all__ = [
     "PlainTextResponse",
     "RedirectResponse",
     "FileResponse",
+    "StreamingResponse",
+    "EventSourceResponse",
     "UploadFile",
     "BackgroundTask",
     "HTTPException",
@@ -51,5 +56,6 @@ __all__ = [
     "AccessLogMiddleware",
     "CORSMiddleware",
     "ErrorHandlerMiddleware",
+    "GZipMiddleware",
 ]
-__version__ = "2.2.2"
+__version__ = "2.3.0"

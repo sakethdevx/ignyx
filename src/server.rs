@@ -9,11 +9,63 @@ use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
-// use futures_util::{SinkExt, StreamExt}; // Removed unused
-// use tokio_tungstenite::tungstenite::Message as WsMessage; // Removed unused
+
+// ── Streaming-capable response body ─────────────────────────────────────
+
+/// A response body that is either a buffered `Full<Bytes>` or a streaming
+/// channel-backed body.  Implements `http_body::Body` so hyper can send it.
+pub(crate) enum AppBody {
+    Full(Full<Bytes>),
+    Stream {
+        rx: tokio::sync::mpsc::Receiver<Bytes>,
+    },
+}
+
+impl AppBody {
+    pub fn full(data: impl Into<Bytes>) -> Self {
+        AppBody::Full(Full::new(data.into()))
+    }
+}
+
+impl http_body::Body for AppBody {
+    type Data = Bytes;
+    type Error = Infallible;
+
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        match self.get_mut() {
+            AppBody::Full(inner) => Pin::new(inner).poll_frame(cx),
+            AppBody::Stream { rx } => match rx.poll_recv(cx) {
+                Poll::Ready(Some(chunk)) => {
+                    Poll::Ready(Some(Ok(http_body::Frame::data(chunk))))
+                }
+                Poll::Ready(None) => Poll::Ready(None),
+                Poll::Pending => Poll::Pending,
+            },
+        }
+    }
+
+    fn is_end_stream(&self) -> bool {
+        match self {
+            AppBody::Full(inner) => inner.is_end_stream(),
+            AppBody::Stream { .. } => false,
+        }
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        match self {
+            AppBody::Full(inner) => inner.size_hint(),
+            AppBody::Stream { .. } => http_body::SizeHint::default(),
+        }
+    }
+}
 
 /// Route handler entry: stores the Python callable and metadata.
 struct RouteEntry {
@@ -34,6 +86,7 @@ pub struct ServerState {
     pub shutdown_handlers: Vec<PyObject>,
     pub py_refs: crate::pyref::PythonCachedRefs,
     pub asyncio_mod: Option<PyObject>,
+    pub rust_middlewares: Arc<crate::middleware::RustMiddlewares>,
 }
 
 thread_local! {
@@ -258,10 +311,39 @@ impl Server {
             .as_ref()
             .and_then(|m: &PyObject| m.getattr(py, "set_event_loop").ok());
 
+        // ── Extract Rust-native middleware configs from Python objects ──
+        let mut cors_config: Option<crate::middleware::RustCORSConfig> = None;
+        let mut rate_limit_config: Option<crate::middleware::RustRateLimitConfig> = None;
+        let mut gzip_config: Option<crate::middleware::RustGZipConfig> = None;
+        let mut python_middlewares: Vec<PyObject> = Vec::new();
+
+        for mw in middlewares {
+            let (cors, rl, gz, keep) =
+                crate::middleware::extract_rust_middleware(py, &mw);
+            if cors.is_some() {
+                cors_config = cors;
+            }
+            if rl.is_some() {
+                rate_limit_config = rl;
+            }
+            if gz.is_some() {
+                gzip_config = gz;
+            }
+            if keep {
+                python_middlewares.push(mw);
+            }
+        }
+
+        let rust_middlewares = Arc::new(crate::middleware::RustMiddlewares::new(
+            cors_config,
+            rate_limit_config,
+            gzip_config,
+        ));
+
         let state = Arc::new(ServerState {
             router,
             handlers,
-            middlewares,
+            middlewares: python_middlewares,
             ws_routes,
             not_found_handler,
             shutdown_handlers,
@@ -271,6 +353,7 @@ impl Server {
                 set_event_loop: set_event_loop.unwrap_or_else(|| py.None()),
             },
             asyncio_mod,
+            rust_middlewares,
         });
 
         println!("\n🔥 Ignyx server running at http://{addr}\n");
@@ -385,7 +468,7 @@ async fn run_server(
 async fn handle_request(
     req: HyperRequest<Incoming>,
     state: Arc<ServerState>,
-) -> Result<HyperResponse<Full<Bytes>>, Infallible> {
+) -> Result<HyperResponse<AppBody>, Infallible> {
     // Check for WebSocket upgrade BEFORE consuming the body
     let is_ws_upgrade = req
         .headers()
@@ -402,8 +485,47 @@ async fn handle_request(
     // Deconstruct req right here to avoid lifetime issues or moving `req` into closure
     let (parts, body) = req.into_parts();
 
+    // ── Rust rate-limit check (no GIL needed) ──────────────────────────
+    let client_ip = parts
+        .headers
+        .get("x-forwarded-for")
+        .or_else(|| parts.headers.get("x-real-ip"))
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown")
+        .to_string();
+    let rate_limit_key = parts
+        .headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| format!("token:{v}"))
+        .unwrap_or_else(|| format!("ip:{client_ip}"));
+
+    if let Err((rl_status, rl_body, rl_headers)) =
+        state.rust_middlewares.check_rate_limit(&rate_limit_key)
+    {
+        let mut builder = HyperResponse::builder()
+            .status(rl_status)
+            .header("server", "Ignyx/2.3.0");
+        for (k, v) in &rl_headers {
+            builder = builder.header(k.as_str(), v.as_str());
+        }
+        let mut response = builder.body(AppBody::full(rl_body)).unwrap();
+        state
+            .rust_middlewares
+            .apply_cors_headers(response.headers_mut());
+        return Ok(response);
+    }
+
+    // Extract accept-encoding for post-handler GZip (before parts is moved)
+    let accept_encoding = parts
+        .headers
+        .get("accept-encoding")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
     if parts.method.as_str() == "OPTIONS" {
-        return Python::with_gil(|py| -> Result<HyperResponse<Full<Bytes>>, Infallible> {
+        return Python::with_gil(|py| -> Result<HyperResponse<AppBody>, Infallible> {
             let mut req_headers = HashMap::new();
             for (k, v) in parts.headers.iter() {
                 req_headers.insert(k.to_string(), v.to_str().unwrap_or("").to_string());
@@ -479,14 +601,18 @@ async fn handle_request(
             let mut builder = HyperResponse::builder()
                 .status(200)
                 .header("content-type", "text/plain")
-                .header("server", "Ignyx/2.2.2");
+                .header("server", "Ignyx/2.3.0");
 
             if let Some(h) = custom_headers {
                 for (k, v) in h {
                     builder = builder.header(k, v);
                 }
             }
-            Ok(builder.body(Full::new(Bytes::from(""))).unwrap())
+            let mut response = builder.body(AppBody::full("")).unwrap();
+            state
+                .rust_middlewares
+                .apply_cors_headers(response.headers_mut());
+            Ok(response)
         });
     }
 
@@ -560,12 +686,16 @@ async fn handle_request(
                                 "detail": errors
                             })
                             .to_string();
-                            return Ok(HyperResponse::builder()
+                            let mut response = HyperResponse::builder()
                                 .status(422)
                                 .header("content-type", "application/json")
-                                .header("server", "Ignyx/2.2.2")
-                                .body(Full::new(Bytes::from(error_body)))
-                                .unwrap());
+                                .header("server", "Ignyx/2.3.0")
+                                .body(AppBody::full(error_body))
+                                .unwrap();
+                            state
+                                .rust_middlewares
+                                .apply_cors_headers(response.headers_mut());
+                            return Ok(response);
                         }
                     }
                 }
@@ -624,11 +754,26 @@ async fn handle_request(
             .unwrap();
 
             match result {
-                Ok((body, content_type, status, custom_headers, bg_task)) => {
+                Ok(crate::handler::HandlerOutput::Full(body, content_type, status, custom_headers, bg_task)) => {
+                    let body_bytes = Bytes::from(body);
+
+                    // Rust GZip compression (no GIL)
+                    let (final_body, is_gzipped) = if let Some(compressed) =
+                        state.rust_middlewares.maybe_gzip(&body_bytes, &accept_encoding)
+                    {
+                        (Bytes::from(compressed), true)
+                    } else {
+                        (body_bytes, false)
+                    };
+
                     let mut builder = HyperResponse::builder()
                         .status(status)
                         .header("content-type", &content_type)
-                        .header("server", "Ignyx/2.2.2");
+                        .header("server", "Ignyx/2.3.0");
+
+                    if is_gzipped {
+                        builder = builder.header("content-encoding", "gzip");
+                    }
 
                     if let Some(h) = custom_headers {
                         for (k, v) in h {
@@ -636,19 +781,19 @@ async fn handle_request(
                         }
                     }
 
-                    let response = builder.body(Full::new(Bytes::from(body))).unwrap();
+                    let mut response = builder.body(AppBody::full(final_body)).unwrap();
+
+                    // Rust CORS headers (no GIL)
+                    state
+                        .rust_middlewares
+                        .apply_cors_headers(response.headers_mut());
 
                     // If there's a background task, spawn it to run AFTER response
                     if let Some(task) = bg_task {
                         tokio::spawn(async move {
-                            // TODO: Replace this sleep with proper tokio::sync::oneshot flush signaling
-                            // once we implement a custom http_body wrapper.
-                            // Delay by 500ms to ensure the HTTP response flushes to the client first.
                             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                             tokio::task::spawn_blocking(move || {
                                 Python::with_gil(|py| {
-                                    // BackgroundTask executes synchronous functions locally right now
-                                    // (We fallback to pyo3_asyncio for real async later)
                                     let _ = task.call_method0(py, "execute");
                                 });
                             });
@@ -657,18 +802,147 @@ async fn handle_request(
 
                     return Ok(response);
                 }
+                Ok(crate::handler::HandlerOutput::Streaming(content_type, status, custom_headers, iterator, is_async)) => {
+                    // ── Streaming / SSE response path ────────────────────────
+                    let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(32);
+
+                    let state_for_stream = state.clone();
+                    tokio::task::spawn_blocking(move || {
+                        Python::with_gil(|py| {
+                            // Ensure asyncio event loop for async iterators
+                            if is_async {
+                                ASYNCIO_LOOP.with(|cell| {
+                                    let mut loop_ref = cell.borrow_mut();
+                                    if loop_ref.is_none() {
+                                        let new_loop_fn =
+                                            state_for_stream.py_refs.new_event_loop.clone_ref(py);
+                                        if !new_loop_fn.is_none(py) {
+                                            if let Ok(loop_obj) = new_loop_fn.bind(py).call0() {
+                                                if let Ok(run_method) =
+                                                    loop_obj.getattr::<&str>("run_until_complete")
+                                                {
+                                                    *loop_ref = Some((
+                                                        loop_obj.unbind(),
+                                                        run_method.unbind(),
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+
+                            let iter_bound = iterator.bind(py);
+
+                            if is_async {
+                                // Iterate an async generator
+                                if let Ok(aiter) = iter_bound.call_method0("__aiter__") {
+                                    loop {
+                                        match aiter.call_method0("__anext__") {
+                                            Ok(coro) => {
+                                                let run_result = ASYNCIO_LOOP.with(|cell| {
+                                                    if let Some(ref c) = *cell.borrow() {
+                                                        c.1.bind(py).call1((&coro,)).ok()
+                                                    } else {
+                                                        None
+                                                    }
+                                                });
+                                                if let Some(chunk_obj) = run_result {
+                                                    if let Ok(chunk_str) =
+                                                        chunk_obj.extract::<String>()
+                                                    {
+                                                        let chunk_bytes =
+                                                            Bytes::from(chunk_str);
+                                                        // Release GIL while waiting for channel
+                                                        let send_ok = py.allow_threads(|| {
+                                                            tx.blocking_send(chunk_bytes).is_ok()
+                                                        });
+                                                        if !send_ok {
+                                                            break;
+                                                        }
+                                                    }
+                                                } else {
+                                                    break;
+                                                }
+                                            }
+                                            Err(e) => {
+                                                if e.is_instance_of::<
+                                                    pyo3::exceptions::PyStopAsyncIteration,
+                                                >(py) {
+                                                    break;
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Iterate a sync generator / iterator
+                                if let Ok(sync_iter) = iter_bound.call_method0("__iter__") {
+                                    loop {
+                                        match sync_iter.call_method0("__next__") {
+                                            Ok(chunk_obj) => {
+                                                if let Ok(chunk_str) =
+                                                    chunk_obj.extract::<String>()
+                                                {
+                                                    let chunk_bytes = Bytes::from(chunk_str);
+                                                    let send_ok = py.allow_threads(|| {
+                                                        tx.blocking_send(chunk_bytes).is_ok()
+                                                    });
+                                                    if !send_ok {
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => {
+                                                if e.is_instance_of::<
+                                                    pyo3::exceptions::PyStopIteration,
+                                                >(py) {
+                                                    break;
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    });
+
+                    let mut builder = HyperResponse::builder()
+                        .status(status)
+                        .header("content-type", &content_type)
+                        .header("server", "Ignyx/2.3.0")
+                        .header("transfer-encoding", "chunked")
+                        .header("cache-control", "no-cache");
+
+                    if let Some(h) = custom_headers {
+                        for (k, v) in h {
+                            builder = builder.header(k, v);
+                        }
+                    }
+
+                    let mut response = builder.body(AppBody::Stream { rx }).unwrap();
+                    state
+                        .rust_middlewares
+                        .apply_cors_headers(response.headers_mut());
+                    return Ok(response);
+                }
                 Err(e) => {
                     let error_body = serde_json::json!({
                         "error": "Internal Server Error",
                         "detail": e.to_string()
                     })
                     .to_string();
-                    let response = HyperResponse::builder()
+                    let mut response = HyperResponse::builder()
                         .status(500)
                         .header("content-type", "application/json")
-                        .header("server", "Ignyx/2.2.2")
-                        .body(Full::new(Bytes::from(error_body)))
+                        .header("server", "Ignyx/2.3.0")
+                        .body(AppBody::full(error_body))
                         .unwrap();
+                    state
+                        .rust_middlewares
+                        .apply_cors_headers(response.headers_mut());
                     return Ok(response);
                 }
             }
@@ -718,11 +992,11 @@ async fn handle_request(
         .await
         .unwrap();
 
-        if let Ok((body, content_type, status, custom_headers, bg_task)) = result {
+        if let Ok(crate::handler::HandlerOutput::Full(body, content_type, status, custom_headers, bg_task)) = result {
             let mut builder = HyperResponse::builder()
                 .status(status)
                 .header("content-type", &content_type)
-                .header("server", "Ignyx/2.2.2");
+                .header("server", "Ignyx/2.3.0");
 
             if let Some(h) = custom_headers {
                 for (k, v) in h {
@@ -741,7 +1015,11 @@ async fn handle_request(
                 });
             }
 
-            return Ok(builder.body(Full::new(Bytes::from(body))).unwrap());
+            let mut response = builder.body(AppBody::full(body)).unwrap();
+            state
+                .rust_middlewares
+                .apply_cors_headers(response.headers_mut());
+            return Ok(response);
         }
     }
 
@@ -752,12 +1030,15 @@ async fn handle_request(
     })
     .to_string();
 
-    let response = HyperResponse::builder()
+    let mut response = HyperResponse::builder()
         .status(404)
         .header("content-type", "application/json")
-        .header("server", "Ignyx/2.2.2")
-        .body(Full::new(Bytes::from(body)))
+        .header("server", "Ignyx/2.3.0")
+        .body(AppBody::full(body))
         .unwrap();
+    state
+        .rust_middlewares
+        .apply_cors_headers(response.headers_mut());
 
     Ok(response)
 }
