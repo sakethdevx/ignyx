@@ -19,9 +19,9 @@ def run_with_reload(
         f"import importlib; m = importlib.import_module('{app_module}'); "
         f"getattr(m, '{app_attr}').run(host='{host}', port={port})",
     ]
-    proc = None
+    proc: subprocess.Popen[bytes] | None = None
 
-    def start():
+    def start() -> None:
         nonlocal proc
         if proc:
             proc.terminate()

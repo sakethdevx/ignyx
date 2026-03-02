@@ -1,22 +1,23 @@
 import json
 import threading
 import time
+from typing import Any
 
 import httpx
 
 
 class TestResponse:
-    def __init__(self, status_code, body, headers):
+    def __init__(self, status_code: int, body: bytes | str, headers: Any) -> None:
         self.status_code = status_code
         self._body = body
         self.headers = headers
         self.text = body if isinstance(body, str) else body.decode("utf-8", errors="replace")
 
-    def json(self):
+    def json(self) -> Any:
         return json.loads(self.text)
 
 class TestClient:
-    def __init__(self, app):
+    def __init__(self, app: Any) -> None:
         import socket
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind(("", 0))
@@ -40,12 +41,21 @@ class TestClient:
             except (ConnectionRefusedError, TimeoutError, OSError):
                 time.sleep(0.1)
 
-    def _request(self, method, path, **kwargs):
+    def _request(self, method: str, path: str, **kwargs: Any) -> TestResponse:
         resp = httpx.request(method, self._base + path, **kwargs)
         return TestResponse(resp.status_code, resp.content, resp.headers)
 
-    def get(self, path, **kwargs): return self._request("GET", path, **kwargs)
-    def post(self, path, **kwargs): return self._request("POST", path, **kwargs)
-    def put(self, path, **kwargs): return self._request("PUT", path, **kwargs)
-    def delete(self, path, **kwargs): return self._request("DELETE", path, **kwargs)
-    def patch(self, path, **kwargs): return self._request("PATCH", path, **kwargs)
+    def get(self, path: str, **kwargs: Any) -> TestResponse: 
+        return self._request("GET", path, **kwargs)
+    
+    def post(self, path: str, **kwargs: Any) -> TestResponse: 
+        return self._request("POST", path, **kwargs)
+    
+    def put(self, path: str, **kwargs: Any) -> TestResponse: 
+        return self._request("PUT", path, **kwargs)
+    
+    def delete(self, path: str, **kwargs: Any) -> TestResponse: 
+        return self._request("DELETE", path, **kwargs)
+    
+    def patch(self, path: str, **kwargs: Any) -> TestResponse: 
+        return self._request("PATCH", path, **kwargs)

@@ -5,7 +5,7 @@ Supports before, after, and error middleware.
 
 import time
 import traceback
-from collections import defaultdict
+from collections import defaultdict  # noqa: F401  # kept for backward compat
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 
@@ -106,7 +106,7 @@ class ErrorHandlerMiddleware(Middleware):
         "Initialize ErrorHandlerMiddleware."
         self.debug = debug
 
-    def on_error(self, request: Any, error: Exception) -> Optional[Union[dict, Tuple[dict, int]]]:
+    def on_error(self, request: Any, error: Exception) -> Optional[Union[Dict[str, Any], Tuple[Dict[str, Any], int]]]:
         "Catch and format exceptions into JSON responses."
         from ignyx.exceptions import HTTPException
 
@@ -133,7 +133,7 @@ class RateLimitMiddleware(Middleware):
         "Initialize rate limiter parameters."
         self.max_requests = requests
         self.window = window
-        self._store: Dict[str, List[float]] = defaultdict(list)
+        self._store: Dict[str, List[float]] = {}
 
     def before_request(self, request: Any) -> Any:
         "Check rates before processing the request."
@@ -143,6 +143,8 @@ class RateLimitMiddleware(Middleware):
             or "unknown"
         )
         now = time.monotonic()
+        if ip not in self._store:
+            self._store[ip] = []
         self._store[ip] = [t for t in self._store[ip] if now - t < self.window]
 
         if len(self._store[ip]) >= self.max_requests:

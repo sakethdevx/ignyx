@@ -11,5 +11,5 @@ class UploadFile:
     def read_sync(self) -> bytes:
         return self._data
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"UploadFile(filename={self.filename!r}, size={self.size})"

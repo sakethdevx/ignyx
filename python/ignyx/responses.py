@@ -111,7 +111,7 @@ class FileResponse(BaseResponse):
 
     def __init__(
         self,
-        path: Union[str, os.PathLike],
+        path: Union[str, "os.PathLike[str]"],
         filename: Optional[str] = None,
         status_code: int = 200,
         headers: Optional[Dict[str, str]] = None,

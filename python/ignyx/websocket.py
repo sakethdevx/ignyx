@@ -9,7 +9,7 @@ awaits until buffer space is available, preventing unbounded memory growth.
 """
 
 import json
-from typing import Any
+from typing import Any, Callable
 
 
 class WebSocket:
@@ -25,27 +25,27 @@ class WebSocket:
     that are injected when the WebSocket connection is established.
     """
 
-    def __init__(self, send_fn, recv_fn, close_fn, accept_fn):
+    def __init__(self, send_fn: Callable[[str], None], recv_fn: Callable[[], str], close_fn: Callable[[int], None], accept_fn: Callable[[], None]) -> None:
         self._send_fn = send_fn
         self._recv_fn = recv_fn
         self._close_fn = close_fn
         self._accept_fn = accept_fn
         self._accepted = False
 
-    async def accept(self):
+    async def accept(self) -> None:
         """Accept the WebSocket connection."""
         self._accepted = True
         self._accept_fn()
 
-    async def send_text(self, data: str):
+    async def send_text(self, data: str) -> None:
         """Send a text message."""
         self._send_fn(data)
 
     async def receive_text(self) -> str:
         """Receive a text message. Blocks until a message arrives."""
-        return self._recv_fn()
+        return str(self._recv_fn())
 
-    async def send_json(self, data: Any):
+    async def send_json(self, data: Any) -> None:
         """Send a JSON message."""
         self._send_fn(json.dumps(data))
 
@@ -54,6 +54,6 @@ class WebSocket:
         text = self._recv_fn()
         return json.loads(text)
 
-    async def close(self, code: int = 1000, reason: str = ""):
+    async def close(self, code: int = 1000, reason: str = "") -> None:
         """Close the WebSocket connection."""
         self._close_fn(code)

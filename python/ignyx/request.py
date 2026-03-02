@@ -4,7 +4,7 @@ from typing import Any, Optional
 from ignyx._core import Request as _RustRequest
 
 
-class Headers(UserDict):
+class Headers(UserDict[str, Any]):
     """Case-insensitive dictionary for HTTP headers."""
 
     def __setitem__(self, key: str, item: Any) -> None:

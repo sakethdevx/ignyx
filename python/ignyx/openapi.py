@@ -1,16 +1,19 @@
 """
 OpenAPI schema generation and Swagger UI / ReDoc serving.
-Auto-generates OpenAPI 3.0 schema from registered routes.
+Auto-generates OpenAPI 3.1.0 schema from registered routes.
+Supports advanced Pydantic model parsing, docstring extraction, and response schemas.
 """
 
 import inspect
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Type, Union, get_args, get_origin
 
 try:
-    from pydantic import BaseModel
+    from pydantic import BaseModel as _PydanticBaseModel
+    _PYDANTIC_AVAILABLE = True
 except ImportError:
-    BaseModel = None  # type: ignore
+    _PydanticBaseModel = None  # type: ignore[assignment, misc]
+    _PYDANTIC_AVAILABLE = False
 
 
 def generate_openapi_schema(
@@ -20,7 +23,8 @@ def generate_openapi_schema(
     description: str = "",
 ) -> Dict[str, Any]:
     """
-    Generate an OpenAPI 3.0 schema from registered routes.
+    Generate an OpenAPI 3.1.0 schema from registered routes.
+    Automatically parses Pydantic models, docstrings, and type hints.
     """
     paths: Dict[str, Any] = {}
     components: Dict[str, Any] = {"schemas": {}}
@@ -38,31 +42,35 @@ def generate_openapi_schema(
         if openapi_path not in paths:
             paths[openapi_path] = {}
 
+        # Parse docstring for summary and description
+        summary, doc_description = _parse_docstring(handler.__doc__ or "")
+        if not summary:
+            summary = name.replace("_", " ").title()
+
         # Build the operation
         operation: Dict[str, Any] = {
-            "summary": name.replace("_", " ").title(),
+            "summary": summary,
             "operationId": name,
-            "responses": {
-                "200": {
-                    "description": "Successful Response",
-                    "content": {"application/json": {"schema": {"type": "object"}}},
-                }
-            },
+            "responses": {},
         }
 
         if tags:
             operation["tags"] = tags
 
-        # Check handler docstring for description
-        if handler.__doc__:
-            operation["description"] = handler.__doc__.strip()
+        if doc_description:
+            operation["description"] = doc_description
 
-        # Extract parameters using inspect
+        # Extract parameters and body schema using inspect
         sig = inspect.signature(handler)
-        parameters = []
+        parameters: List[Dict[str, Any]] = []
         path_params = re.findall(r"\{(\w+)\}", path)
 
         has_body = False
+        response_model: Optional[type] = None
+
+        # Check return annotation for response model
+        if sig.return_annotation and sig.return_annotation is not inspect.Signature.empty:
+            response_model = _extract_response_model(sig.return_annotation)
 
         for param_name, param in sig.parameters.items():
             if param_name in ["request", "background_tasks"]:
@@ -71,26 +79,19 @@ def generate_openapi_schema(
             annotation = param.annotation
             is_path = param_name in path_params
 
-            if param_name == "body" or (
-                BaseModel and isinstance(annotation, type) and issubclass(annotation, BaseModel)
-            ):
+            # Check if this is a Pydantic model (body parameter)
+            if _is_pydantic_model(annotation):
                 has_body = True
-                model_name = annotation.__name__ if hasattr(annotation, "__name__") else "BodyModel"
-                if BaseModel and isinstance(annotation, type) and issubclass(annotation, BaseModel):
-                    if model_name not in components["schemas"]:
-                        components["schemas"][model_name] = annotation.model_json_schema()
+                model_name = getattr(annotation, "__name__", "BodyModel")
+                if model_name not in components["schemas"]:
+                    components["schemas"][model_name] = _get_model_schema(annotation)
 
-                    operation["requestBody"] = {
-                        "content": {
-                            "application/json": {"schema": {"$ref": f"#/components/schemas/{model_name}"}}
-                        },
-                        "required": True,
-                    }
-                else:
-                    operation["requestBody"] = {
-                        "content": {"application/json": {"schema": {"type": "object"}}},
-                        "required": True,
-                    }
+                operation["requestBody"] = {
+                    "content": {
+                        "application/json": {"schema": {"$ref": f"#/components/schemas/{model_name}"}}
+                    },
+                    "required": param.default is inspect.Parameter.empty,
+                }
                 continue
 
             if is_path:
@@ -99,22 +100,45 @@ def generate_openapi_schema(
                         "name": param_name,
                         "in": "path",
                         "required": True,
-                        "schema": _get_type_schema(annotation),
+                        "schema": _get_type_schema(annotation, components),
                     }
                 )
             else:
                 # Query parameter
-                parameters.append(
-                    {
-                        "name": param_name,
-                        "in": "query",
-                        "required": param.default is inspect.Parameter.empty,
-                        "schema": _get_type_schema(annotation),
-                    }
-                )
+                param_schema = _get_type_schema(annotation, components)
+                param_def: Dict[str, Any] = {
+                    "name": param_name,
+                    "in": "query",
+                    "required": param.default is inspect.Parameter.empty,
+                    "schema": param_schema,
+                }
+                
+                # Add default value if present
+                if param.default is not inspect.Parameter.empty and param.default is not None:
+                    param_def["schema"]["default"] = param.default
+                    
+                parameters.append(param_def)
 
         if parameters:
             operation["parameters"] = parameters
+
+        # Build response schema
+        if response_model and _is_pydantic_model(response_model):
+            model_name = getattr(response_model, "__name__", "ResponseModel")
+            if model_name not in components["schemas"]:
+                components["schemas"][model_name] = _get_model_schema(response_model)
+            
+            operation["responses"]["200"] = {
+                "description": "Successful Response",
+                "content": {
+                    "application/json": {"schema": {"$ref": f"#/components/schemas/{model_name}"}}
+                },
+            }
+        else:
+            operation["responses"]["200"] = {
+                "description": "Successful Response",
+                "content": {"application/json": {"schema": {"type": "object"}}},
+            }
 
         if has_body:
             operation["responses"]["422"] = {
@@ -138,8 +162,88 @@ def generate_openapi_schema(
     return schema
 
 
-def _get_type_schema(annotation: Any) -> Dict[str, Any]:
-    "Helper to convert Python type annotations to OpenAPI schemas."
+def _parse_docstring(docstring: str) -> tuple[str, str]:
+    """
+    Parse a docstring into summary and description.
+    First line is summary, rest is description.
+    """
+    if not docstring:
+        return "", ""
+    
+    lines = docstring.strip().split("\n", 1)
+    summary = lines[0].strip()
+    description = lines[1].strip() if len(lines) > 1 else ""
+    
+    return summary, description
+
+
+def _is_pydantic_model(annotation: Any) -> bool:
+    """Check if an annotation is a Pydantic BaseModel."""
+    if not _PYDANTIC_AVAILABLE or _PydanticBaseModel is None:
+        return False
+    try:
+        return isinstance(annotation, type) and issubclass(annotation, _PydanticBaseModel)
+    except TypeError:
+        return False
+
+
+def _get_model_schema(model_cls: Any) -> Dict[str, Any]:
+    """Get JSON schema from a Pydantic model class."""
+    fn = getattr(model_cls, "model_json_schema", None)
+    if callable(fn):
+        result: Dict[str, Any] = fn()
+        return result
+    return {"type": "object"}
+
+
+def _extract_response_model(annotation: Any) -> Optional[Type[Any]]:
+    """Extract the response model from return type annotation."""
+    # Handle Optional[Model] or Union[Model, None]
+    origin = get_origin(annotation)
+    if origin is Union:
+        args = get_args(annotation)
+        # Filter out None
+        model_args = [arg for arg in args if arg is not type(None)]
+        if model_args and _is_pydantic_model(model_args[0]):
+            cls: Type[Any] = model_args[0]
+            return cls
+    
+    if _is_pydantic_model(annotation):
+        cls2: Type[Any] = annotation
+        return cls2
+    
+    return None
+
+
+def _get_type_schema(annotation: Any, components: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert Python type annotations to OpenAPI schemas.
+    Handles Optional, Union, List, and Pydantic models.
+    """
+    # Handle None or missing annotation
+    if annotation is inspect.Parameter.empty or annotation is None:
+        return {"type": "string"}
+    
+    # Handle Optional types (Union with None)
+    origin = get_origin(annotation)
+    if origin is Union:
+        args = get_args(annotation)
+        # Filter out None
+        non_none_args = [arg for arg in args if arg is not type(None)]
+        if non_none_args:
+            schema = _get_type_schema(non_none_args[0], components)
+            # Mark as nullable if None was in the Union
+            if type(None) in args:
+                schema["nullable"] = True
+            return schema
+    
+    # Handle List types
+    if origin is list or annotation is list:
+        args = get_args(annotation)
+        item_schema = _get_type_schema(args[0], components) if args else {"type": "string"}
+        return {"type": "array", "items": item_schema}
+    
+    # Handle basic types
     if annotation is str:
         return {"type": "string"}
     if annotation is int:
@@ -148,8 +252,15 @@ def _get_type_schema(annotation: Any) -> Dict[str, Any]:
         return {"type": "number"}
     if annotation is bool:
         return {"type": "boolean"}
-    if annotation is list or getattr(annotation, "__origin__", None) is list:
-        return {"type": "array", "items": {"type": "string"}}
+    
+    # Handle Pydantic models
+    if _is_pydantic_model(annotation):
+        model_name = getattr(annotation, "__name__", "Model")
+        if model_name not in components["schemas"]:
+            components["schemas"][model_name] = _get_model_schema(annotation)
+        return {"$ref": f"#/components/schemas/{model_name}"}
+    
+    # Default fallback
     return {"type": "string"}
 
 

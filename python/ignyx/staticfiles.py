@@ -1,15 +1,16 @@
 import os
+from typing import Any
 
 from ignyx.exceptions import HTTPException
 from ignyx.responses import FileResponse
 
 
 class StaticFiles:
-    def __init__(self, directory: str, html: bool = False):
+    def __init__(self, directory: str, html: bool = False) -> None:
         self.directory = os.path.abspath(directory)
         self.html = html
 
-    def __call__(self, path: str = ""):
+    def __call__(self, path: str = "") -> FileResponse:
         full_path = os.path.normpath(os.path.join(self.directory, path.lstrip("/")))
 
         if not full_path.startswith(self.directory) or ".." in path:
