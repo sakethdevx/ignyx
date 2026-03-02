@@ -1,31 +1,33 @@
 """
 Tests for the ASGI adapter (ignyx.asgi.IgnyxASGI).
 
-Uses httpx.ASGITransport to drive the ASGI callable without starting a real
-server, keeping tests fully in-process and fast.
+Uses ``httpx.ASGITransport`` to drive the ASGI callable in-process (no real
+server started).  Every test is a *synchronous* function that calls
+``asyncio.run()`` internally — no pytest-asyncio plugin required.
 
 Coverage:
-  - Basic GET routing via ASGI
+  - Basic GET routing
   - Path parameters (type coercion)
-  - Query parameters
-  - POST with JSON body / Pydantic model
-  - BaseResponse subclasses (JSONResponse, HTMLResponse, RedirectResponse)
+  - Query parameters (with defaults)
+  - POST with JSON body
+  - BaseResponse subclasses (JSONResponse, HTMLResponse, PlainTextResponse,
+    RedirectResponse)
   - Streaming responses (StreamingResponse, EventSourceResponse)
-  - Lifespan startup and shutdown handlers
+  - Tuple response (body, status, headers)
   - Exception handling (HTTPException → correct status)
-  - 404 for unregistered paths
+  - 404 for unregistered paths (custom exception handler)
   - Dependency injection via Depends()
   - BackgroundTasks injection
+  - Lifespan: startup/shutdown (async + sync handlers)
 """
 
 import asyncio
-import time
 
 import httpx
 import pytest
 
 from ignyx import Depends, HTTPException, Ignyx
-from ignyx.depends import BackgroundTask, BackgroundTasks
+from ignyx.depends import BackgroundTasks
 from ignyx.request import Request
 from ignyx.responses import (
     EventSourceResponse,
@@ -37,11 +39,30 @@ from ignyx.responses import (
 )
 
 
-# ─── fixtures ─────────────────────────────────────────────────────────────────
+# ─── helpers ──────────────────────────────────────────────────────────────────
 
-@pytest.fixture()
-def asgi_client():
-    """Build a simple Ignyx app and return an httpx.AsyncClient over ASGI."""
+def _asgi_request(asgi_app, method: str, path: str, **kwargs):
+    """Make a single HTTP request against an ASGI app synchronously."""
+    async def _():
+        transport = httpx.ASGITransport(app=asgi_app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            return await c.request(method, path, **kwargs)
+    return asyncio.run(_())
+
+
+def _get(app, path, **kw):
+    return _asgi_request(app, "GET", path, **kw)
+
+
+def _post(app, path, **kw):
+    return _asgi_request(app, "POST", path, **kw)
+
+
+# ─── shared ASGI app fixture ──────────────────────────────────────────────────
+
+@pytest.fixture(scope="module")
+def asgi_app():
+    """Build a small Ignyx app and expose its ASGI callable."""
     app = Ignyx(title="ASGI-Test", version="2.5.0")
 
     @app.get("/")
@@ -118,146 +139,132 @@ def asgi_client():
     def not_found(request: Request, exc):
         return JSONResponse({"error": "not found"}, status_code=404)
 
-    asgi_app = app.asgi()
-    transport = httpx.ASGITransport(app=asgi_app)
-    return httpx.AsyncClient(transport=transport, base_url="http://test")
+    return app.asgi()
 
 
-# ─── basic routing ────────────────────────────────────────────────────────────
+# ─── basic routing ─────────────────────────────────────────────────────────────
 
-@pytest.mark.asyncio
-async def test_asgi_root(asgi_client):
-    r = await asgi_client.get("/")
+def test_asgi_root(asgi_app):
+    r = _get(asgi_app, "/")
     assert r.status_code == 200
     assert r.json() == {"hello": "world"}
 
 
-@pytest.mark.asyncio
-async def test_asgi_path_param_int(asgi_client):
-    r = await asgi_client.get("/users/42")
+def test_asgi_health(asgi_app):
+    r = _get(asgi_app, "/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+
+
+def test_asgi_path_param_int(asgi_app):
+    r = _get(asgi_app, "/users/42")
     assert r.status_code == 200
     assert r.json() == {"user_id": 42}
 
 
-@pytest.mark.asyncio
-async def test_asgi_query_params(asgi_client):
-    r = await asgi_client.get("/search?q=ignyx&limit=10")
+def test_asgi_query_params(asgi_app):
+    r = _get(asgi_app, "/search?q=ignyx&limit=10")
     assert r.status_code == 200
     assert r.json() == {"q": "ignyx", "limit": 10}
 
 
-@pytest.mark.asyncio
-async def test_asgi_query_default(asgi_client):
-    r = await asgi_client.get("/search?q=test")
+def test_asgi_query_default(asgi_app):
+    r = _get(asgi_app, "/search?q=test")
     assert r.status_code == 200
     assert r.json() == {"q": "test", "limit": 5}
 
 
-@pytest.mark.asyncio
-async def test_asgi_post_json_body(asgi_client):
-    r = await asgi_client.post("/echo", json={"key": "value"})
+def test_asgi_post_json_body(asgi_app):
+    r = _post(asgi_app, "/echo", json={"key": "value"})
     assert r.status_code == 200
     assert r.json() == {"key": "value"}
 
 
-# ─── response types ────────────────────────────────────────────────────────────
+# ─── response types ─────────────────────────────────────────────────────────────
 
-@pytest.mark.asyncio
-async def test_asgi_html_response(asgi_client):
-    r = await asgi_client.get("/html")
+def test_asgi_html_response(asgi_app):
+    r = _get(asgi_app, "/html")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
     assert "<h1>Hello</h1>" in r.text
 
 
-@pytest.mark.asyncio
-async def test_asgi_plain_text_response(asgi_client):
-    r = await asgi_client.get("/plain")
+def test_asgi_plain_text_response(asgi_app):
+    r = _get(asgi_app, "/plain")
     assert r.status_code == 200
     assert "text/plain" in r.headers["content-type"]
     assert r.text == "hello text"
 
 
-@pytest.mark.asyncio
-async def test_asgi_redirect_response(asgi_client):
-    r = await asgi_client.get("/redirect", follow_redirects=False)
+def test_asgi_redirect_response(asgi_app):
+    r = _asgi_request(asgi_app, "GET", "/redirect", follow_redirects=False)
     assert r.status_code == 302
     assert r.headers["location"] == "/health"
 
 
-@pytest.mark.asyncio
-async def test_asgi_str_html(asgi_client):
-    r = await asgi_client.get("/str-html")
+def test_asgi_str_html(asgi_app):
+    r = _get(asgi_app, "/str-html")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
 
 
-@pytest.mark.asyncio
-async def test_asgi_tuple_response(asgi_client):
-    r = await asgi_client.get("/tuple")
+def test_asgi_tuple_response(asgi_app):
+    r = _get(asgi_app, "/tuple")
     assert r.status_code == 201
     assert r.headers.get("x-custom") == "yes"
     assert r.json() == {"msg": "created"}
 
 
-# ─── streaming ────────────────────────────────────────────────────────────────
+# ─── streaming ─────────────────────────────────────────────────────────────────
 
-@pytest.mark.asyncio
-async def test_asgi_streaming(asgi_client):
-    r = await asgi_client.get("/stream")
+def test_asgi_streaming(asgi_app):
+    r = _get(asgi_app, "/stream")
     assert r.status_code == 200
     assert "text/plain" in r.headers["content-type"]
     assert r.text == "chunk0\nchunk1\nchunk2\n"
 
 
-@pytest.mark.asyncio
-async def test_asgi_sse(asgi_client):
-    r = await asgi_client.get("/sse")
+def test_asgi_sse(asgi_app):
+    r = _get(asgi_app, "/sse")
     assert r.status_code == 200
     assert "text/event-stream" in r.headers["content-type"]
     assert "data: 0" in r.text
 
 
-# ─── errors ────────────────────────────────────────────────────────────────────
+# ─── errors ──────────────────────────────────────────────────────────────────
 
-@pytest.mark.asyncio
-async def test_asgi_http_exception(asgi_client):
-    r = await asgi_client.get("/raise")
+def test_asgi_http_exception(asgi_app):
+    r = _get(asgi_app, "/raise")
     assert r.status_code == 403
     assert "forbidden" in r.json().get("detail", "")
 
 
-@pytest.mark.asyncio
-async def test_asgi_404(asgi_client):
-    r = await asgi_client.get("/not-registered")
+def test_asgi_404(asgi_app):
+    r = _get(asgi_app, "/not-registered")
     assert r.status_code == 404
     assert r.json()["error"] == "not found"
 
 
 # ─── dependency injection ─────────────────────────────────────────────────────
 
-@pytest.mark.asyncio
-async def test_asgi_depends_injection(asgi_client):
-    r = await asgi_client.get("/di", headers={"x-token": "my-token"})
+def test_asgi_depends_injection(asgi_app):
+    r = _asgi_request(asgi_app, "GET", "/di", headers={"x-token": "my-token"})
     assert r.status_code == 200
     assert r.json() == {"token": "my-token"}
 
 
 # ─── BackgroundTasks ──────────────────────────────────────────────────────────
 
-@pytest.mark.asyncio
-async def test_asgi_background_tasks_injected(asgi_client):
-    """Route handler receives a BackgroundTasks instance and response is immediate."""
-    r = await asgi_client.post("/bg")
+def test_asgi_background_tasks_injected(asgi_app):
+    r = _post(asgi_app, "/bg")
     assert r.status_code == 200
     assert r.json() == {"queued": True}
 
 
 # ─── lifespan ─────────────────────────────────────────────────────────────────
 
-@pytest.mark.asyncio
-async def test_asgi_lifespan():
-    """Startup and shutdown handlers are invoked during ASGI lifespan."""
+def test_asgi_lifespan_async():
+    """Async startup and shutdown handlers are invoked."""
     app = Ignyx()
     log: list = []
 
@@ -275,33 +282,29 @@ async def test_asgi_lifespan():
 
     asgi_app = app.asgi()
 
-    # Manually drive the lifespan ASGI cycle
-    startup_q: asyncio.Queue = asyncio.Queue()
-    send_q: asyncio.Queue = asyncio.Queue()
+    async def _run():
+        q: asyncio.Queue = asyncio.Queue()
+        sent: list = []
+        await q.put({"type": "lifespan.startup"})
+        await q.put({"type": "lifespan.shutdown"})
 
-    async def receive():
-        return await startup_q.get()
+        async def receive():
+            return await q.get()
 
-    async def send(msg):
-        await send_q.put(msg)
+        async def send(msg):
+            sent.append(msg)
 
-    scope = {"type": "lifespan", "asgi": {"version": "3.0"}}
+        await asgi_app({"type": "lifespan", "asgi": {"version": "3.0"}}, receive, send)
+        return sent
 
-    await startup_q.put({"type": "lifespan.startup"})
-    await startup_q.put({"type": "lifespan.shutdown"})
-
-    await asgi_app(scope, receive, send)
-
-    events = [send_q.get_nowait() for _ in range(send_q.qsize())]
-    event_types = [e["type"] for e in events]
-
-    assert "lifespan.startup.complete" in event_types
-    assert "lifespan.shutdown.complete" in event_types
+    sent = asyncio.run(_run())
+    types = [e["type"] for e in sent]
+    assert "lifespan.startup.complete" in types
+    assert "lifespan.shutdown.complete" in types
     assert log == ["started", "stopped"]
 
 
-@pytest.mark.asyncio
-async def test_asgi_lifespan_sync_handlers():
+def test_asgi_lifespan_sync():
     """Synchronous startup/shutdown handlers are called correctly."""
     app = Ignyx()
     log: list = []
@@ -315,19 +318,27 @@ async def test_asgi_lifespan_sync_handlers():
         log.append("sync_stopped")
 
     asgi_app = app.asgi()
-    startup_q: asyncio.Queue = asyncio.Queue()
-    send_q: asyncio.Queue = asyncio.Queue()
 
-    await startup_q.put({"type": "lifespan.startup"})
-    await startup_q.put({"type": "lifespan.shutdown"})
+    async def _run():
+        q: asyncio.Queue = asyncio.Queue()
+        sent: list = []
+        await q.put({"type": "lifespan.startup"})
+        await q.put({"type": "lifespan.shutdown"})
 
-    async def receive():
-        return await startup_q.get()
+        async def receive():
+            return await q.get()
 
-    async def send(msg):
-        await send_q.put(msg)
+        async def send(msg):
+            sent.append(msg)
 
-    scope = {"type": "lifespan"}
-    await asgi_app(scope, receive, send)
+        await asgi_app({"type": "lifespan"}, receive, send)
+        return sent
 
+    sent = asyncio.run(_run())
+    types = [e["type"] for e in sent]
+    assert "lifespan.startup.complete" in types
+    assert "lifespan.shutdown.complete" in types
     assert log == ["sync_started", "sync_stopped"]
+
+
+
