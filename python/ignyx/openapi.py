@@ -112,11 +112,11 @@ def generate_openapi_schema(
                     "required": param.default is inspect.Parameter.empty,
                     "schema": param_schema,
                 }
-                
+
                 # Add default value if present
                 if param.default is not inspect.Parameter.empty and param.default is not None:
                     param_def["schema"]["default"] = param.default
-                    
+
                 parameters.append(param_def)
 
         if parameters:
@@ -127,7 +127,7 @@ def generate_openapi_schema(
             model_name = getattr(response_model, "__name__", "ResponseModel")
             if model_name not in components["schemas"]:
                 components["schemas"][model_name] = _get_model_schema(response_model)
-            
+
             operation["responses"]["200"] = {
                 "description": "Successful Response",
                 "content": {
@@ -169,11 +169,11 @@ def _parse_docstring(docstring: str) -> tuple[str, str]:
     """
     if not docstring:
         return "", ""
-    
+
     lines = docstring.strip().split("\n", 1)
     summary = lines[0].strip()
     description = lines[1].strip() if len(lines) > 1 else ""
-    
+
     return summary, description
 
 
@@ -207,11 +207,11 @@ def _extract_response_model(annotation: Any) -> Optional[Type[Any]]:
         if model_args and _is_pydantic_model(model_args[0]):
             cls: Type[Any] = model_args[0]
             return cls
-    
+
     if _is_pydantic_model(annotation):
         cls2: Type[Any] = annotation
         return cls2
-    
+
     return None
 
 
@@ -223,7 +223,7 @@ def _get_type_schema(annotation: Any, components: Dict[str, Any]) -> Dict[str, A
     # Handle None or missing annotation
     if annotation is inspect.Parameter.empty or annotation is None:
         return {"type": "string"}
-    
+
     # Handle Optional types (Union with None)
     origin = get_origin(annotation)
     if origin is Union:
@@ -236,13 +236,13 @@ def _get_type_schema(annotation: Any, components: Dict[str, Any]) -> Dict[str, A
             if type(None) in args:
                 schema["nullable"] = True
             return schema
-    
+
     # Handle List types
     if origin is list or annotation is list:
         args = get_args(annotation)
         item_schema = _get_type_schema(args[0], components) if args else {"type": "string"}
         return {"type": "array", "items": item_schema}
-    
+
     # Handle basic types
     if annotation is str:
         return {"type": "string"}
@@ -252,14 +252,14 @@ def _get_type_schema(annotation: Any, components: Dict[str, Any]) -> Dict[str, A
         return {"type": "number"}
     if annotation is bool:
         return {"type": "boolean"}
-    
+
     # Handle Pydantic models
     if _is_pydantic_model(annotation):
         model_name = getattr(annotation, "__name__", "Model")
         if model_name not in components["schemas"]:
             components["schemas"][model_name] = _get_model_schema(annotation)
         return {"$ref": f"#/components/schemas/{model_name}"}
-    
+
     # Default fallback
     return {"type": "string"}
 

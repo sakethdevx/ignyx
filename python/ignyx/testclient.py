@@ -45,17 +45,17 @@ class TestClient:
         resp = httpx.request(method, self._base + path, **kwargs)
         return TestResponse(resp.status_code, resp.content, resp.headers)
 
-    def get(self, path: str, **kwargs: Any) -> TestResponse: 
+    def get(self, path: str, **kwargs: Any) -> TestResponse:
         return self._request("GET", path, **kwargs)
-    
-    def post(self, path: str, **kwargs: Any) -> TestResponse: 
+
+    def post(self, path: str, **kwargs: Any) -> TestResponse:
         return self._request("POST", path, **kwargs)
-    
-    def put(self, path: str, **kwargs: Any) -> TestResponse: 
+
+    def put(self, path: str, **kwargs: Any) -> TestResponse:
         return self._request("PUT", path, **kwargs)
-    
-    def delete(self, path: str, **kwargs: Any) -> TestResponse: 
+
+    def delete(self, path: str, **kwargs: Any) -> TestResponse:
         return self._request("DELETE", path, **kwargs)
-    
-    def patch(self, path: str, **kwargs: Any) -> TestResponse: 
+
+    def patch(self, path: str, **kwargs: Any) -> TestResponse:
         return self._request("PATCH", path, **kwargs)
