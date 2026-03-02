@@ -216,19 +216,6 @@ pub fn extract_rust_middleware(
             };
             (Some(cors), None, None, false)
         }
-        "RateLimitMiddleware" => {
-            let rl = RustRateLimitConfig {
-                max_requests: mw
-                    .getattr(py, "max_requests")
-                    .and_then(|v| v.extract::<u32>(py))
-                    .unwrap_or(100),
-                window_secs: mw
-                    .getattr(py, "window")
-                    .and_then(|v| v.extract::<u64>(py))
-                    .unwrap_or(60),
-            };
-            (None, Some(rl), None, false)
-        }
         "GZipMiddleware" => {
             let gz = RustGZipConfig {
                 minimum_size: mw

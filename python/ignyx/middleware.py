@@ -126,38 +126,6 @@ class ErrorHandlerMiddleware(Middleware):
             }, 500
 
 
-class RateLimitMiddleware(Middleware):
-    "Middleware for applying simple in-memory rate limiting."
-
-    def __init__(self, requests: int = 100, window: int = 60) -> None:
-        "Initialize rate limiter parameters."
-        self.max_requests = requests
-        self.window = window
-        self._store: Dict[str, List[float]] = {}
-
-    def before_request(self, request: Any) -> Any:
-        "Check rates before processing the request."
-        ip = (
-            request.headers.get("x-forwarded-for")
-            or request.headers.get("x-real-ip")
-            or "unknown"
-        )
-        now = time.monotonic()
-        if ip not in self._store:
-            self._store[ip] = []
-        self._store[ip] = [t for t in self._store[ip] if now - t < self.window]
-
-        if len(self._store[ip]) >= self.max_requests:
-            from ignyx.exceptions import HTTPException
-
-            raise HTTPException(
-                429, "Rate limit exceeded", headers={"Retry-After": str(self.window)}
-            )
-
-        self._store[ip].append(now)
-        return request
-
-
 class AccessLogMiddleware(Middleware):
     "Middleware for logging request details and duration."
 

@@ -121,7 +121,7 @@ impl Server {
 
     /// Start the HTTP server. This blocks the calling thread.
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (host, port, middlewares, ws_routes, not_found_handler, shutdown_handlers))]
+    #[pyo3(signature = (host, port, middlewares, ws_routes, not_found_handler, shutdown_handlers, rate_limit_requests=None, rate_limit_window=None))]
     pub fn run(
         &self,
         py: Python<'_>,
@@ -131,6 +131,8 @@ impl Server {
         ws_routes: Vec<(String, PyObject)>,
         not_found_handler: Option<PyObject>,
         shutdown_handlers: Vec<PyObject>,
+        rate_limit_requests: Option<u32>,
+        rate_limit_window: Option<u64>,
     ) -> PyResult<()> {
         let addr: SocketAddr =
             format!("{host}:{port}")
@@ -331,6 +333,14 @@ impl Server {
             }
         }
 
+        // Rate limit config from explicit Ignyx app params takes precedence
+        if let Some(max_req) = rate_limit_requests {
+            rate_limit_config = Some(crate::middleware::RustRateLimitConfig {
+                max_requests: max_req,
+                window_secs: rate_limit_window.unwrap_or(60),
+            });
+        }
+
         let rust_middlewares = Arc::new(crate::middleware::RustMiddlewares::new(
             cors_config,
             rate_limit_config,
@@ -502,7 +512,7 @@ async fn handle_request(
     {
         let mut builder = HyperResponse::builder()
             .status(rl_status)
-            .header("server", "Ignyx/2.3.0");
+            .header("server", "Ignyx/2.6.0");
         for (k, v) in &rl_headers {
             builder = builder.header(k.as_str(), v.as_str());
         }

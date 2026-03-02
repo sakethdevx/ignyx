@@ -155,7 +155,7 @@ class CustomMiddleware(Middleware):
     (project_dir / "app" / "middleware" / "custom.py").write_text(middleware_content)
 
     # Create requirements.txt
-    requirements_content = '''ignyx>=2.5.0
+    requirements_content = '''ignyx>=2.6.0
 pydantic>=2.0.0
 '''
     (project_dir / "requirements.txt").write_text(requirements_content)

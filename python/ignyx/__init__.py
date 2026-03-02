@@ -13,7 +13,6 @@ from ignyx.middleware import (
     ErrorHandlerMiddleware,
     GZipMiddleware,
     Middleware,
-    RateLimitMiddleware,
 )
 from ignyx.responses import (
     EventSourceResponse,
@@ -53,10 +52,9 @@ __all__ = [
     "HTTPBasic",
     "TestClient",
     "StaticFiles",
-    "RateLimitMiddleware",
     "AccessLogMiddleware",
     "CORSMiddleware",
     "ErrorHandlerMiddleware",
     "GZipMiddleware",
 ]
-__version__ = "2.5.0"
+__version__ = "2.6.0"

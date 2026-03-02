@@ -36,12 +36,14 @@ class Ignyx:
     def __init__(
         self,
         title: str = "Ignyx",
-        version: str = "2.5.0",
+        version: str = "2.6.0",
         debug: bool = False,
         description: str = "",
         docs_url: str = "/docs",
         redoc_url: str = "/redoc",
         openapi_url: str = "/openapi.json",
+        rate_limit_requests: Optional[int] = None,
+        rate_limit_window: int = 60,
     ) -> None:
         """Initialize the Ignyx application."""
         self._server: Server = Server()
@@ -60,6 +62,8 @@ class Ignyx:
         self._exception_handlers: Dict[Union[int, Type[Exception]], Callable[..., Any]] = {}
         self._startup_handlers: List[Callable[..., Any]] = []
         self._shutdown_handlers: List[Callable[..., Any]] = []
+        self._rate_limit_requests: Optional[int] = rate_limit_requests
+        self._rate_limit_window: int = rate_limit_window
 
         from types import SimpleNamespace
 
@@ -434,5 +438,6 @@ class Ignyx:
                 handler()
 
         self._server.run(
-            host, port, self._middlewares, ws_routes, not_found_handler, self._shutdown_handlers
+            host, port, self._middlewares, ws_routes, not_found_handler, self._shutdown_handlers,
+            self._rate_limit_requests, self._rate_limit_window,
         )

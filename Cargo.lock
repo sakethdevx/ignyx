@@ -366,7 +366,7 @@ dependencies = [
 
 [[package]]
 name = "ignyx"
-version = "2.3.0"
+version = "2.6.0"
 dependencies = [
  "base64",
  "bytes",

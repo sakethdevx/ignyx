@@ -1,6 +1,6 @@
 from ignyx import Ignyx
 from ignyx.testclient import TestClient
-from ignyx.middleware import Middleware, CORSMiddleware, RateLimitMiddleware
+from ignyx.middleware import Middleware, CORSMiddleware
 from ignyx.responses import PlainTextResponse
 import time
 import pytest
@@ -31,8 +31,7 @@ def test_cors_preflight():
     assert r.headers["access-control-allow-origin"] == "http://example.com"
 
 def test_rate_limit():
-    app = Ignyx()
-    app.add_middleware(RateLimitMiddleware(requests=2, window=60))
+    app = Ignyx(rate_limit_requests=2, rate_limit_window=60)
     
     @app.get("/")
     def index(): return "ok"
@@ -47,8 +46,7 @@ def test_rate_limit():
     assert r3.headers["retry-after"] == "60"
 
 def test_rate_limit_resets():
-    app = Ignyx()
-    app.add_middleware(RateLimitMiddleware(requests=1, window=1))
+    app = Ignyx(rate_limit_requests=1, rate_limit_window=1)
     
     @app.get("/")
     def index(): return "ok"
