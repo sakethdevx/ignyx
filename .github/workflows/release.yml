@@ -29,6 +29,11 @@ jobs:
           target: ${{ matrix.target }}
           args: --release --out dist --interpreter 3.12 3.13
           sccache: 'true'
+        env:
+          # ring 0.17 cross-compiling to aarch64 requires the assembler to know
+          # the ARM architecture version. Without this the build fails with:
+          # "ARM assembler must define __ARM_ARCH"
+          CFLAGS_aarch64_unknown_linux_gnu: "-march=armv8-a"
           
       - name: Upload wheels
         uses: actions/upload-artifact@v4
