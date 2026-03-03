@@ -33,7 +33,7 @@ jobs:
           # ring 0.17 cross-compiling to aarch64 requires the assembler to know
           # the ARM architecture version. Without this the build fails with:
           # "ARM assembler must define __ARM_ARCH"
-          CFLAGS_aarch64_unknown_linux_gnu: "-march=armv8-a"
+          CFLAGS_aarch64_unknown_linux_gnu: "-march=armv8-a -D__ARM_ARCH=8"
           
       - name: Upload wheels
         uses: actions/upload-artifact@v4
