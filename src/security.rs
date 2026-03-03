@@ -33,8 +33,7 @@ fn json_to_py(py: Python<'_>, val: &Value) -> PyResult<PyObject> {
         }
         Value::String(s) => Ok(s.clone().into_pyobject(py)?.into_any().unbind()),
         Value::Array(arr) => {
-            let items: PyResult<Vec<PyObject>> =
-                arr.iter().map(|v| json_to_py(py, v)).collect();
+            let items: PyResult<Vec<PyObject>> = arr.iter().map(|v| json_to_py(py, v)).collect();
             Ok(PyList::new(py, items?)?.into_any().unbind())
         }
         Value::Object(obj) => {
