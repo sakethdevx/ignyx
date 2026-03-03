@@ -1,6 +1,6 @@
 [package]
 name = "ignyx"
-version = "2.6.0"
+version = "2.7.0"
 edition = "2021"
 
 [lib]
@@ -27,6 +27,7 @@ base64 = "0.22"
 multer = "3"
 flate2 = "1"
 dashmap = "6"
+jsonwebtoken = "9"
 
 [profile.release]
 opt-level = 3

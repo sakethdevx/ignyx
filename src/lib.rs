@@ -5,6 +5,7 @@ mod pyref;
 mod request;
 mod response;
 mod router;
+mod security;
 mod server;
 mod websocket;
 
@@ -17,5 +18,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<server::Server>()?;
     m.add_class::<request::Request>()?;
     m.add_class::<response::Response>()?;
+    m.add_class::<security::JwtDecoder>()?;
     Ok(())
 }

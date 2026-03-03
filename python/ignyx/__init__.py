@@ -24,7 +24,7 @@ from ignyx.responses import (
     StreamingResponse,
 )
 from ignyx.router import Router
-from ignyx.security import APIKeyHeader, HTTPBasic, OAuth2PasswordBearer
+from ignyx.security import APIKeyHeader, HTTPBasic, JWTBearer, OAuth2PasswordBearer
 from ignyx.staticfiles import StaticFiles
 from ignyx.testclient import TestClient
 from ignyx.uploads import UploadFile
@@ -50,6 +50,7 @@ __all__ = [
     "OAuth2PasswordBearer",
     "APIKeyHeader",
     "HTTPBasic",
+    "JWTBearer",
     "TestClient",
     "StaticFiles",
     "AccessLogMiddleware",
@@ -57,4 +58,4 @@ __all__ = [
     "ErrorHandlerMiddleware",
     "GZipMiddleware",
 ]
-__version__ = "2.6.0"
+__version__ = "2.7.0"
