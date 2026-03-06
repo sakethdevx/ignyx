@@ -1,7 +1,8 @@
 import asyncio
 import threading
 import time
-import requests
+import urllib.request
+import json
 import pytest
 from ignyx import Ignyx
 import websockets
@@ -40,10 +41,16 @@ async def test_pubsub_broadcast():
     async with websockets.connect(uri) as ws1, websockets.connect(uri) as ws2:
         await asyncio.sleep(0.5) # Give subscriptions time to finalize
         
-        # Broadcast via HTTP
-        resp = requests.post(f"http://127.0.0.1:{port}/broadcast", json={"text": "Hello PubSub!"})
-        assert resp.status_code == 200
-        assert resp.json()["subscribers"] == 2
+        # Broadcast via HTTP using standard library urllib
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/broadcast",
+            data=json.dumps({"text": "Hello PubSub!"}).encode(),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req) as response:
+            assert response.status == 200
+            resp_data = json.loads(response.read().decode())
+            assert resp_data["subscribers"] == 2
         
         # Verify both WS clients receive the native Rust broadcast
         msg1 = await asyncio.wait_for(ws1.recv(), timeout=2.0)
