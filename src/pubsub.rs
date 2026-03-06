@@ -45,15 +45,12 @@ impl PubSub {
 impl PubSub {
     /// Internal Rust method to subscribe to a channel
     pub(crate) fn subscribe(&self, channel: &str) -> broadcast::Receiver<String> {
-        let sender = self
-            .channels
-            .entry(channel.to_string())
-            .or_insert_with(|| {
-                // max 1024 messages stored per channel for slow consumers
-                // before they lag and are disconnected
-                let (tx, _) = broadcast::channel(1024);
-                tx
-            });
+        let sender = self.channels.entry(channel.to_string()).or_insert_with(|| {
+            // max 1024 messages stored per channel for slow consumers
+            // before they lag and are disconnected
+            let (tx, _) = broadcast::channel(1024);
+            tx
+        });
         sender.subscribe()
     }
 }

@@ -1,6 +1,7 @@
 mod handler;
 mod middleware;
 mod multipart;
+mod pubsub;
 mod pyref;
 mod request;
 mod response;
@@ -8,7 +9,6 @@ mod router;
 mod security;
 mod server;
 mod websocket;
-mod pubsub;
 
 use pyo3::prelude::*;
 

@@ -195,7 +195,7 @@ pub(crate) async fn handle_websocket(
                                     if let Some(ref pubsub) = state_for_sub.pubsub {
                                         let mut rx = pubsub.subscribe(&channel);
                                         let send_tx_sub = send_tx_for_sub.clone();
-                                        
+
                                         tokio::spawn(async move {
                                             loop {
                                                 match rx.recv().await {
