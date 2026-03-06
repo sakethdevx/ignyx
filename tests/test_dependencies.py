@@ -66,3 +66,72 @@ def test_background_task():
     assert results == []  # Not done yet
     time.sleep(0.8)  # Wait for background task to execute
     assert results == ["done"]
+
+
+def test_shared_subdependency_cached_per_request():
+    """Prove that a shared sub-dependency is evaluated exactly once per request.
+
+    Dependency graph:
+        get_db (counter) ← get_user(db) ← handler
+                         ← get_settings(db) ← handler
+
+    get_db must be called exactly once; both parents receive the same value.
+    """
+    app = Ignyx()
+    calls = {"count": 0}
+
+    def get_db():
+        calls["count"] += 1
+        return f"db-conn-{calls['count']}"
+
+    def get_user(db=Depends(get_db)):
+        return {"user": "alice", "db": db}
+
+    def get_settings(db=Depends(get_db)):
+        return {"theme": "dark", "db": db}
+
+    @app.get("/")
+    def index(user=Depends(get_user), settings=Depends(get_settings)):
+        return {"user": user, "settings": settings}
+
+    client = TestClient(app)
+
+    # First request
+    r = client.get("/")
+    assert r.status_code == 200
+    data = r.json()
+    assert calls["count"] == 1  # get_db called exactly once
+    assert data["user"]["db"] == "db-conn-1"
+    assert data["settings"]["db"] == "db-conn-1"  # Same cached value
+
+    # Second request — fresh cache, counter increments to 2
+    r2 = client.get("/")
+    assert r2.status_code == 200
+    data2 = r2.json()
+    assert calls["count"] == 2  # One new call for the new request
+    assert data2["user"]["db"] == "db-conn-2"
+    assert data2["settings"]["db"] == "db-conn-2"
+
+
+def test_depends_no_cache():
+    """Prove that use_cache=False forces re-evaluation of a dependency."""
+    app = Ignyx()
+    calls = {"count": 0}
+
+    def get_db():
+        calls["count"] += 1
+        return calls["count"]
+
+    @app.get("/")
+    def index(
+        v1=Depends(get_db, use_cache=False),
+        v2=Depends(get_db, use_cache=False),
+    ):
+        return {"v1": v1, "v2": v2}
+
+    client = TestClient(app)
+    r = client.get("/")
+    assert r.status_code == 200
+    assert calls["count"] == 2  # Called twice — no caching
+    assert r.json() == {"v1": 1, "v2": 2}
+
