@@ -31,10 +31,7 @@ impl PubSub {
     /// Returns the number of active subscribers that received the message.
     pub fn broadcast(&self, channel: &str, message: String) -> PyResult<usize> {
         let count = if let Some(sender) = self.channels.get(channel) {
-            match sender.send(message) {
-                Ok(receivers) => receivers,
-                Err(_) => 0, // No active receivers
-            }
+            sender.send(message).unwrap_or_default()
         } else {
             0
         };
