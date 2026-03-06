@@ -7,7 +7,7 @@ Integrates middleware, OpenAPI, dependency injection, and background tasks.
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
-from ignyx._core import Server
+from ignyx._core import PubSub, Server
 from ignyx.depends import BackgroundTask, BackgroundTasks
 from ignyx.middleware import ErrorHandlerMiddleware, Middleware
 from ignyx.openapi import (
@@ -36,7 +36,7 @@ class Ignyx:
     def __init__(
         self,
         title: str = "Ignyx",
-        version: str = "2.9.1",
+        version: str = "2.10.0",
         debug: bool = False,
         description: str = "",
         docs_url: str = "/docs",
@@ -64,6 +64,7 @@ class Ignyx:
         self._shutdown_handlers: List[Callable[..., Any]] = []
         self._rate_limit_requests: Optional[int] = rate_limit_requests
         self._rate_limit_window: int = rate_limit_window
+        self.pubsub: PubSub = PubSub()
 
         from types import SimpleNamespace
 
@@ -439,5 +440,5 @@ class Ignyx:
 
         self._server.run(
             host, port, self._middlewares, ws_routes, not_found_handler, self._shutdown_handlers,
-            self._rate_limit_requests, self._rate_limit_window,
+            self.pubsub, self._rate_limit_requests, self._rate_limit_window,
         )

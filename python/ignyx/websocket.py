@@ -25,17 +25,33 @@ class WebSocket:
     that are injected when the WebSocket connection is established.
     """
 
-    def __init__(self, send_fn: Callable[[str], None], recv_fn: Callable[[], str], close_fn: Callable[[int], None], accept_fn: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        send_fn: Callable[[str], None],
+        recv_fn: Callable[[], str],
+        close_fn: Callable[[int], None],
+        accept_fn: Callable[[], None],
+        subscribe_fn: Callable[[str], None],
+    ) -> None:
         self._send_fn = send_fn
         self._recv_fn = recv_fn
         self._close_fn = close_fn
         self._accept_fn = accept_fn
+        self._subscribe_fn = subscribe_fn
         self._accepted = False
 
     async def accept(self) -> None:
         """Accept the WebSocket connection."""
         self._accepted = True
         self._accept_fn()
+
+    async def subscribe(self, channel: str) -> None:
+        """
+        Subscribe this WebSocket to a Pub/Sub broadcast channel.
+        Incoming messages sent via `app.pubsub.broadcast(channel, msg)`
+        will be automatically piped into this WebSocket.
+        """
+        self._subscribe_fn(channel)
 
     async def send_text(self, data: str) -> None:
         """Send a text message."""
@@ -57,3 +73,4 @@ class WebSocket:
     async def close(self, code: int = 1000, reason: str = "") -> None:
         """Close the WebSocket connection."""
         self._close_fn(code)
+

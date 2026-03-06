@@ -138,7 +138,9 @@ pub(crate) async fn handle_websocket(
                                 move |args: &pyo3::Bound<'_, pyo3::types::PyTuple>, _kwargs: Option<&pyo3::Bound<'_, pyo3::types::PyDict>>| -> PyResult<()> {
                                     let text: String = args.get_item(0)?.extract()?;
                                     // blocking_send respects backpressure (bounded channel)
-                                    let _ = send_tx_inner.blocking_send(text);
+                                    args.py().allow_threads(|| {
+                                        let _ = send_tx_inner.blocking_send(text);
+                                    });
                                     Ok(())
                                 },
                             ).unwrap();
@@ -148,12 +150,14 @@ pub(crate) async fn handle_websocket(
                                 py,
                                 Some(c"recv"),
                                 None,
-                                move |_args: &pyo3::Bound<'_, pyo3::types::PyTuple>, _kwargs: Option<&pyo3::Bound<'_, pyo3::types::PyDict>>| -> PyResult<String> {
-                                    let mut rx = recv_rx_inner.lock().unwrap();
-                                    match rx.blocking_recv() {
-                                        Some(text) => Ok(text),
-                                        None => Err(pyo3::exceptions::PyConnectionError::new_err("WebSocket closed")),
-                                    }
+                                move |args: &pyo3::Bound<'_, pyo3::types::PyTuple>, _kwargs: Option<&pyo3::Bound<'_, pyo3::types::PyDict>>| -> PyResult<String> {
+                                    args.py().allow_threads(|| {
+                                        let mut rx = recv_rx_inner.lock().unwrap();
+                                        match rx.blocking_recv() {
+                                            Some(text) => Ok(text),
+                                            None => Err(pyo3::exceptions::PyConnectionError::new_err("WebSocket closed")),
+                                        }
+                                    })
                                 },
                             ).unwrap();
 
@@ -164,7 +168,9 @@ pub(crate) async fn handle_websocket(
                                 None,
                                 move |args: &pyo3::Bound<'_, pyo3::types::PyTuple>, _kwargs: Option<&pyo3::Bound<'_, pyo3::types::PyDict>>| -> PyResult<()> {
                                     let code: u16 = args.get_item(0).and_then(|v| v.extract()).unwrap_or(1000);
-                                    let _ = close_tx_inner.blocking_send(code);
+                                    args.py().allow_threads(|| {
+                                        let _ = close_tx_inner.blocking_send(code);
+                                    });
                                     Ok(())
                                 },
                             ).unwrap();
@@ -178,10 +184,40 @@ pub(crate) async fn handle_websocket(
                                 },
                             ).unwrap();
 
+                            let state_for_sub = state_clone.clone();
+                            let send_tx_for_sub = send_tx_for_py.clone();
+                            let subscribe_fn = pyo3::types::PyCFunction::new_closure(
+                                py,
+                                Some(c"subscribe"),
+                                None,
+                                move |args: &pyo3::Bound<'_, pyo3::types::PyTuple>, _kwargs: Option<&pyo3::Bound<'_, pyo3::types::PyDict>>| -> PyResult<()> {
+                                    let channel: String = args.get_item(0)?.extract()?;
+                                    if let Some(ref pubsub) = state_for_sub.pubsub {
+                                        let mut rx = pubsub.subscribe(&channel);
+                                        let send_tx_sub = send_tx_for_sub.clone();
+                                        
+                                        tokio::spawn(async move {
+                                            loop {
+                                                match rx.recv().await {
+                                                    Ok(msg) => {
+                                                        if send_tx_sub.send(msg).await.is_err() {
+                                                            break;
+                                                        }
+                                                    }
+                                                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                                                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                                                }
+                                            }
+                                        });
+                                    }
+                                    Ok(())
+                                },
+                            ).unwrap();
+
                             // Create the Python WebSocket wrapper
                             if let Ok(ws_mod) = py.import("ignyx.websocket") {
                                 if let Ok(ws_class) = ws_mod.getattr("WebSocket") {
-                                    if let Ok(ws_instance) = ws_class.call1((send_fn, recv_fn, close_fn, accept_fn)) {
+                                    if let Ok(ws_instance) = ws_class.call1((send_fn, recv_fn, close_fn, accept_fn, subscribe_fn)) {
                                         if let Ok(coro) = handler.call1(py, (ws_instance,)) {
                                             let inspect = py.import("inspect").unwrap();
                                             let is_coro: bool = inspect.call_method1("iscoroutine", (&coro,))

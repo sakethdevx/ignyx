@@ -85,6 +85,7 @@ pub struct ServerState {
     pub py_refs: crate::pyref::PythonCachedRefs,
     pub asyncio_mod: Option<PyObject>,
     pub rust_middlewares: Arc<crate::middleware::RustMiddlewares>,
+    pub pubsub: Option<crate::pubsub::PubSub>,
 }
 
 thread_local! {
@@ -121,7 +122,7 @@ impl Server {
 
     /// Start the HTTP server. This blocks the calling thread.
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (host, port, middlewares, ws_routes, not_found_handler, shutdown_handlers, rate_limit_requests=None, rate_limit_window=None))]
+    #[pyo3(signature = (host, port, middlewares, ws_routes, not_found_handler, shutdown_handlers, pubsub=None, rate_limit_requests=None, rate_limit_window=None))]
     pub fn run(
         &self,
         py: Python<'_>,
@@ -131,6 +132,7 @@ impl Server {
         ws_routes: Vec<(String, PyObject)>,
         not_found_handler: Option<PyObject>,
         shutdown_handlers: Vec<PyObject>,
+        pubsub: Option<PyRef<'_, crate::pubsub::PubSub>>,
         rate_limit_requests: Option<u32>,
         rate_limit_window: Option<u64>,
     ) -> PyResult<()> {
@@ -361,6 +363,9 @@ impl Server {
             },
             asyncio_mod,
             rust_middlewares,
+            pubsub: pubsub.map(|p| crate::pubsub::PubSub {
+                channels: p.channels.clone(),
+            }),
         });
 
         println!("\n🔥 Ignyx server running at http://{addr}\n");
