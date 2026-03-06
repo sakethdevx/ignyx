@@ -73,7 +73,47 @@ async def admin_dashboard(user: User = Depends(get_current_user)):
 
 ### `HTTPBasic`
 - **Purpose**: Extracts and decodes Username/Password from the `Authorization: Basic` header.
-- **Returns**: An object with `.username` and `.password` attributes.
+- **Returns**: A dict with `username` and `password` keys.
+
+### `JWTBearer` ⚡ Rust-Native
+
+- **Purpose**: Extracts a Bearer token from the `Authorization` header and validates it using Ignyx's **Rust-native JWT engine** — no Python JWT library needed.
+- **Parameters**:
+    - `secret` (str): HMAC secret (for HS256/HS384/HS512) or PEM key string for asymmetric algorithms.
+    - `algorithm` (str): JWT algorithm. Default `"HS256"`. Supported: HS256, HS384, HS512, RS256, RS384, RS512, ES256, ES384.
+    - `validate_exp` (bool): Whether to enforce the `exp` claim. Default `True`.
+- **Returns**: The decoded payload as a Python `dict`.
+- **Raises**: `HTTPException(401)` if the token is missing, invalid, or expired.
+
+```python
+from ignyx import Ignyx, Depends
+from ignyx.security import JWTBearer
+
+jwt = JWTBearer(secret="your-secret", algorithm="HS256")
+
+app = Ignyx()
+
+@app.get("/protected")
+def protected(payload: dict = Depends(jwt)):
+    return {"user": payload.get("sub")}
+```
+
+### `JwtDecoder` (Low-Level Rust Codec)
+
+For full control over encoding and decoding, use the Rust codec directly:
+
+```python
+from ignyx._core import JwtDecoder
+import time
+
+codec = JwtDecoder(secret="your-secret", algorithm="HS256")
+
+# Encode
+token = codec.encode({"sub": "alice", "exp": int(time.time()) + 3600})
+
+# Decode
+payload = codec.decode(token)  # -> {"sub": "alice", "exp": ...}
+```
 
 ## Common Patterns
 
@@ -93,8 +133,36 @@ async def root(token: Optional[str] = Depends(oauth2_scheme)):
     return {"message": "Guest"}
 ```
 
+### JWT Login Flow
+
+A complete login + protected route pattern:
+
+```python
+import time
+from ignyx import Ignyx, Depends, HTTPException
+from ignyx._core import JwtDecoder
+from ignyx.security import JWTBearer
+
+SECRET = "super-secret-key"
+codec = JwtDecoder(secret=SECRET, algorithm="HS256")
+jwt_required = JWTBearer(secret=SECRET, algorithm="HS256")
+
+app = Ignyx()
+
+@app.post("/token")
+def login(body: dict) -> dict:
+    if body.get("username") == "alice" and body.get("password") == "secret":
+        token = codec.encode({"sub": "alice", "exp": int(time.time()) + 3600})
+        return {"access_token": token, "token_type": "bearer"}
+    raise HTTPException(401, "Invalid credentials")
+
+@app.get("/me")
+def me(payload: dict = Depends(jwt_required)) -> dict:
+    return {"username": payload.get("sub")}
+```
+
 ## Notes & Gotchas
 
-- **Production Security**: Security utilities only extract and decode credentials. They do **not** verify tokens (like JWT signatures). That logic should be implemented in your dependency functions.
+- **JWT Validation**: `JWTBearer` performs full cryptographic validation in Rust — signature verification, expiry checks, and algorithm enforcement. No additional Python JWT library is needed.
 - **HTTPS**: Always run Ignyx behind a TLS/SSL proxy (like Nginx) in production. Security schemes pass sensitive data in headers which must be encrypted.
 - **OpenAPI**: Using these built-in utilities ensures that the "Authorize" button in Swagger UI works correctly for your API.
