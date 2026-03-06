@@ -173,10 +173,6 @@ async def echo_server(ws):
 | Hot Reload             | ✅      | ✅      |
 | Native Rust Core       | ✅      | ❌      |
 
-## ⭐ Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=sakethdevx/ignyx&type=Date)](https://star-history.com/#sakethdevx/ignyx&Date)
-
 ## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to set up your development environment.
