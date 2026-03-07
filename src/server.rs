@@ -317,10 +317,11 @@ impl Server {
         let mut cors_config: Option<crate::middleware::RustCORSConfig> = None;
         let mut rate_limit_config: Option<crate::middleware::RustRateLimitConfig> = None;
         let mut gzip_config: Option<crate::middleware::RustGZipConfig> = None;
+        let mut session_config: Option<crate::middleware::RustSessionConfig> = None;
         let mut python_middlewares: Vec<PyObject> = Vec::new();
 
         for mw in middlewares {
-            let (cors, rl, gz, keep) = crate::middleware::extract_rust_middleware(py, &mw);
+            let (cors, rl, gz, sess, keep) = crate::middleware::extract_rust_middleware(py, &mw);
             if cors.is_some() {
                 cors_config = cors;
             }
@@ -329,6 +330,9 @@ impl Server {
             }
             if gz.is_some() {
                 gzip_config = gz;
+            }
+            if sess.is_some() {
+                session_config = sess;
             }
             if keep {
                 python_middlewares.push(mw);
@@ -347,6 +351,7 @@ impl Server {
             cors_config,
             rate_limit_config,
             gzip_config,
+            session_config,
         ));
 
         let state = Arc::new(ServerState {

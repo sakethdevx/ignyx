@@ -61,11 +61,65 @@ pub struct RustGZipConfig {
     pub minimum_size: usize,
 }
 
+/// Session configuration extracted from Python SessionMiddleware at startup.
+pub struct RustSessionConfig {
+    pub secret_key: Vec<u8>,
+}
+
+impl RustSessionConfig {
+    /// Decrypts a base64 encoded AES-GCM session cookie.
+    /// Returns the raw JSON string if successful, or None on verification failure.
+    pub fn decrypt_session(&self, cookie_value: &str) -> Option<String> {
+        use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+        let decoded = URL_SAFE_NO_PAD.decode(cookie_value).ok()?;
+        if decoded.len() < 12 {
+            return None;
+        }
+
+        let key = aes_gcm::Key::<Aes256Gcm>::from_slice(&self.secret_key);
+        let cipher = Aes256Gcm::new(key);
+
+        let (nonce_bytes, ciphertext) = decoded.split_at(12);
+        let nonce = Nonce::from_slice(nonce_bytes);
+
+        let plaintext = cipher.decrypt(nonce, ciphertext).ok()?;
+        String::from_utf8(plaintext).ok()
+    }
+
+    /// Encrypts a raw JSON string into a base64 encoded AES-GCM session cookie.
+    pub fn encrypt_session(&self, payload: &str) -> String {
+        use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        use rand::Rng;
+
+        let key = aes_gcm::Key::<Aes256Gcm>::from_slice(&self.secret_key);
+        let cipher = Aes256Gcm::new(key);
+
+        // Generate 12-byte random nonce
+        let mut nonce_bytes = [0u8; 12];
+        rand::rng().fill_bytes(&mut nonce_bytes);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let ciphertext = cipher
+            .encrypt(nonce, payload.as_bytes())
+            .unwrap_or_else(|_| vec![]);
+
+        let mut combined = Vec::with_capacity(nonce_bytes.len() + ciphertext.len());
+        combined.extend_from_slice(&nonce_bytes);
+        combined.extend_from_slice(&ciphertext);
+
+        URL_SAFE_NO_PAD.encode(&combined)
+    }
+}
+
 /// Collection of all Rust-native middlewares that execute without the Python GIL.
 pub struct RustMiddlewares {
     pub cors: Option<RustCORSConfig>,
     pub rate_limit: Option<RustRateLimitConfig>,
     pub gzip: Option<RustGZipConfig>,
+    pub session: Option<RustSessionConfig>,
     /// Concurrent map: key → Vec<Instant> of request timestamps
     pub rate_limit_store: DashMap<String, Vec<Instant>>,
 }
@@ -75,11 +129,13 @@ impl RustMiddlewares {
         cors: Option<RustCORSConfig>,
         rate_limit: Option<RustRateLimitConfig>,
         gzip: Option<RustGZipConfig>,
+        session: Option<RustSessionConfig>,
     ) -> Self {
         Self {
             cors,
             rate_limit,
             gzip,
+            session,
             rate_limit_store: DashMap::new(),
         }
     }
@@ -174,7 +230,7 @@ impl RustMiddlewares {
 }
 
 /// Extract a Rust middleware config from a Python middleware object.
-/// Returns (cors, rate_limit, gzip, should_keep_in_python_list).
+/// Returns (cors, rate_limit, gzip, session, should_keep_in_python_list).
 pub fn extract_rust_middleware(
     py: Python<'_>,
     mw: &PyObject,
@@ -182,6 +238,7 @@ pub fn extract_rust_middleware(
     Option<RustCORSConfig>,
     Option<RustRateLimitConfig>,
     Option<RustGZipConfig>,
+    Option<RustSessionConfig>,
     bool,
 ) {
     let class_name = mw
@@ -214,7 +271,7 @@ pub fn extract_rust_middleware(
                     .and_then(|v| v.extract::<u32>(py))
                     .unwrap_or(86400),
             };
-            (Some(cors), None, None, false)
+            (Some(cors), None, None, None, false)
         }
         "GZipMiddleware" => {
             let gz = RustGZipConfig {
@@ -223,8 +280,23 @@ pub fn extract_rust_middleware(
                     .and_then(|v| v.extract::<usize>(py))
                     .unwrap_or(500),
             };
-            (None, None, Some(gz), false)
+            (None, None, Some(gz), None, false)
         }
-        _ => (None, None, None, true),
+        "SessionMiddleware" => {
+            let secret = mw
+                .getattr(py, "secret_key")
+                .and_then(|v| v.extract::<String>(py))
+                .unwrap_or_else(|_| String::new());
+
+            // Pad or truncate to 32 bytes (AES-256-GCM requirement)
+            let mut key = vec![0u8; 32];
+            let secret_bytes = secret.as_bytes();
+            let copy_len = std::cmp::min(secret_bytes.len(), 32);
+            key[..copy_len].copy_from_slice(&secret_bytes[..copy_len]);
+
+            let session_cfg = RustSessionConfig { secret_key: key };
+            (None, None, None, Some(session_cfg), false)
+        }
+        _ => (None, None, None, None, true),
     }
 }

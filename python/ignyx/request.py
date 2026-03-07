@@ -47,6 +47,7 @@ class Request:
         "_path_params_cache",
         "_json_cache",
         "_text_cache",
+        "session",
     )
 
     def __init__(self, rust_req: _RustRequest) -> None:
@@ -60,6 +61,7 @@ class Request:
         self._path_params_cache: Optional[dict[str, Any]] = None
         self._json_cache: Optional[dict[str, Any]] = None
         self._text_cache: Optional[str] = None
+        self.session: dict[str, Any] = {}
 
     @property
     def headers(self) -> Headers:

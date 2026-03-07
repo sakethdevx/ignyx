@@ -1,6 +1,6 @@
 [package]
 name = "ignyx"
-version = "2.10.0"
+version = "2.11.0"
 edition = "2021"
 
 [lib]
@@ -28,6 +28,8 @@ multer = "3"
 flate2 = "1"
 dashmap = "6"
 jsonwebtoken = "9"
+aes-gcm = "0.10.3"
+rand = "0.10.0"
 
 [profile.release]
 opt-level = 3

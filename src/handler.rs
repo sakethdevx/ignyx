@@ -129,6 +129,33 @@ pub(crate) fn call_python_handler(
                 py_request_wrapped = wrapper.into();
             }
         }
+
+        // --- Native Session Decryption ---
+        if let Some(ref session_cfg) = state.rust_middlewares.session {
+            if let Some(cookie_hdr) = headers.get(hyper::header::COOKIE) {
+                if let Ok(cookie_str) = cookie_hdr.to_str() {
+                    for part in cookie_str.split(';') {
+                        let part = part.trim();
+                        if let Some(token) = part.strip_prefix("session=") {
+                            if let Some(json_str) = session_cfg.decrypt_session(token) {
+                                if let Ok(serde_val) =
+                                    serde_json::from_str::<serde_json::Value>(&json_str)
+                                {
+                                    if let Ok(py_val) =
+                                        crate::request::json_value_to_py(py, &serde_val)
+                                    {
+                                        let _ =
+                                            py_request_wrapped.bind(py).setattr("session", py_val);
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         py_request_wrapped_opt = Some(py_request_wrapped);
     }
 
@@ -521,11 +548,51 @@ pub(crate) fn call_python_handler(
             } else {
                 ch
             };
+
+        // --- Native Session Encryption (Full Custom Response Route) ---
+        let mut final_headers = resp_headers;
+        if let Some(ref session_cfg) = state.rust_middlewares.session {
+            if let Some(ref req_obj) = py_request_wrapped_opt {
+                if let Ok(session_val) = req_obj.getattr(py, "session") {
+                    if let Ok(dict) = session_val.downcast_bound::<PyDict>(py) {
+                        if !dict.is_empty() {
+                            if let Ok(json_str) =
+                                crate::request::py_to_json_string(py, &session_val.into_bound(py))
+                            {
+                                let encrypted_cookie = session_cfg.encrypt_session(&json_str);
+                                let cookie_header = format!(
+                                    "session={}; Path=/; HttpOnly; SameSite=Lax",
+                                    encrypted_cookie
+                                );
+
+                                if final_headers.is_none() {
+                                    final_headers = Some(HashMap::new());
+                                }
+                                final_headers
+                                    .as_mut()
+                                    .unwrap()
+                                    .insert("set-cookie".to_string(), cookie_header);
+                            }
+                        } else if headers.contains_key(hyper::header::COOKIE) {
+                            // If emptied, let's kill the cookie
+                            if final_headers.is_none() {
+                                final_headers = Some(HashMap::new());
+                            }
+                            final_headers.as_mut().unwrap().insert(
+                                "set-cookie".to_string(),
+                                "session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0".to_string(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         return Ok(HandlerOutput::Full(
             bs,
             ct,
             s_c,
-            resp_headers,
+            final_headers,
             injected_task,
         ));
     }
@@ -554,6 +621,44 @@ pub(crate) fn call_python_handler(
         let s = crate::request::py_to_json_string(py, &actual)?;
         (s, "application/json".to_string())
     };
+
+    // --- Native Session Encryption ---
+    if let Some(ref session_cfg) = state.rust_middlewares.session {
+        if let Some(req_obj) = py_request_wrapped_opt {
+            if let Ok(session_val) = req_obj.getattr(py, "session") {
+                if let Ok(dict) = session_val.downcast_bound::<PyDict>(py) {
+                    if !dict.is_empty() {
+                        if let Ok(json_str) =
+                            crate::request::py_to_json_string(py, &session_val.into_bound(py))
+                        {
+                            let encrypted_cookie = session_cfg.encrypt_session(&json_str);
+                            let cookie_header = format!(
+                                "session={}; Path=/; HttpOnly; SameSite=Lax",
+                                encrypted_cookie
+                            );
+
+                            if ch.is_none() {
+                                ch = Some(HashMap::new());
+                            }
+                            // Important: If standard headers are used, this injects the Set-Cookie natively
+                            ch.as_mut()
+                                .unwrap()
+                                .insert("set-cookie".to_string(), cookie_header);
+                        }
+                    } else if headers.contains_key(hyper::header::COOKIE) {
+                        // If the dictionary is deliberately emptied, clear the session cookie
+                        if ch.is_none() {
+                            ch = Some(HashMap::new());
+                        }
+                        ch.as_mut().unwrap().insert(
+                            "set-cookie".to_string(),
+                            "session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0".to_string(),
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     Ok(HandlerOutput::Full(bs, ct, sc, ch, injected_task))
 }

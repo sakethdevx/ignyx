@@ -171,3 +171,20 @@ class GZipMiddleware(Middleware):
     def __init__(self, minimum_size: int = 500) -> None:
         "Initialize GZip middleware."
         self.minimum_size = minimum_size
+
+
+class SessionMiddleware(Middleware):
+    """
+    Stateful session management middleware powered by Rust AES-GCM encryption.
+    
+    This middleware enables the `request.session` dictionary.
+    The secret key must be provided to securely encrypt and tamper-proof the session cookie.
+    
+    Usage:
+        app.add_middleware(SessionMiddleware(secret_key="your-32-byte-secret-key-here"))
+    """
+
+    def __init__(self, secret_key: str) -> None:
+        "Initialize Session middleware with a secret key."
+        self.secret_key = secret_key
+
