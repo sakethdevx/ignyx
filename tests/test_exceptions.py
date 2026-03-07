@@ -1,5 +1,6 @@
-from ignyx import Ignyx, HTTPException
+from ignyx import HTTPException, Ignyx
 from ignyx.testclient import TestClient
+
 
 def test_http_exception_404():
     app = Ignyx()
@@ -32,11 +33,11 @@ def test_exception_handler_override():
     app = Ignyx()
     @app.get("/")
     def index(): raise HTTPException(400, "Bad data")
-    
+
     @app.exception_handler(400)
     def handle_400(request, exc):
         return {"custom_error": True}, 418
-        
+
     client = TestClient(app)
     r = client.get("/")
     assert r.status_code == 418
@@ -45,7 +46,7 @@ def test_exception_handler_override():
 def test_unhandled_exception():
     app = Ignyx()
     @app.get("/")
-    def index(): 
+    def index():
         raise ValueError("Oops")
     client = TestClient(app)
     r = client.get("/")

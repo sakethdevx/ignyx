@@ -17,7 +17,6 @@ from ignyx import Ignyx
 from ignyx.depends import BackgroundTask, BackgroundTasks
 from ignyx.testclient import TestClient
 
-
 # ─── helpers ─────────────────────────────────────────────────────────────────
 
 def _new_client_with_bg_route() -> tuple:

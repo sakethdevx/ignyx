@@ -1,12 +1,11 @@
-from ignyx import (Ignyx, Router, HTTPException)
-from ignyx.responses import JSONResponse, HTMLResponse, RedirectResponse
-from ignyx.request import Request
-from ignyx.uploads import UploadFile
-from ignyx.testclient import TestClient
-from ignyx.security import OAuth2PasswordBearer
-from ignyx.middleware import CORSMiddleware
-from pydantic import BaseModel
 import pytest
+from ignyx import HTTPException, Ignyx, Router
+from ignyx.request import Request
+from ignyx.responses import HTMLResponse, JSONResponse, RedirectResponse
+from ignyx.testclient import TestClient
+from ignyx.uploads import UploadFile
+from pydantic import BaseModel
+
 
 @pytest.fixture(scope="session")
 def client():
@@ -50,7 +49,7 @@ def client():
 
     @app.post("/upload")
     async def upload(file: UploadFile):
-        content = await file.read()
+        _content = await file.read()
         return {"filename": file.filename, "size": file.size}
 
     @app.exception_handler(404)

@@ -1,6 +1,7 @@
 import asyncio
-from pydantic import BaseModel
+
 from ignyx import Ignyx
+from pydantic import BaseModel
 
 app = Ignyx()
 

@@ -7,7 +7,7 @@ Full-featured Ignyx demo app exercising all Phase 2 features:
 - Background tasks
 - Error handling (dev mode)
 """
-from ignyx import Ignyx, Depends
+from ignyx import Ignyx
 from ignyx.middleware import CORSMiddleware
 
 app = Ignyx(

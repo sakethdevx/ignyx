@@ -1,4 +1,5 @@
 from ignyx import Ignyx
+
 app = Ignyx()
 
 @app.get('/plaintext')

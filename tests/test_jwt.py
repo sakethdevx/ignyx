@@ -2,8 +2,7 @@
 import time
 
 import pytest
-
-from ignyx import Depends, HTTPException, Ignyx
+from ignyx import Depends, Ignyx
 from ignyx._core import JwtDecoder
 from ignyx.security import JWTBearer
 from ignyx.testclient import TestClient

@@ -1,4 +1,5 @@
 import os
+
 from ignyx import Ignyx, Request
 from ignyx.middleware import SessionMiddleware
 
@@ -16,18 +17,18 @@ def home(request: Request):
     """
     Reads the 'counter' from the encrypted session cookie,
     increments it, and returns the result.
-    
-    If the cookie doesn't exist or is tampered with, 
+
+    If the cookie doesn't exist or is tampered with,
     the session starts fresh.
     """
     # session is just a normal Python dictionary
     current_count = request.session.get("counter", 0)
-    
+
     new_count = current_count + 1
-    
+
     # modify the dictionary; Ignyx natively encrypts this into a Set-Cookie header
     request.session["counter"] = new_count
-    
+
     return {
         "message": "Welcome to the Session Example!",
         "visits": new_count

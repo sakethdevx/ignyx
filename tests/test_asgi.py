@@ -25,7 +25,6 @@ import asyncio
 
 import httpx
 import pytest
-
 from ignyx import Depends, HTTPException, Ignyx
 from ignyx.depends import BackgroundTasks
 from ignyx.request import Request
@@ -37,7 +36,6 @@ from ignyx.responses import (
     RedirectResponse,
     StreamingResponse,
 )
-
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 

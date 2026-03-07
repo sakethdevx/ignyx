@@ -1,11 +1,12 @@
 from ignyx import Ignyx
 from ignyx.testclient import TestClient
 
+
 def test_openapi_json_200():
     app = Ignyx()
     @app.get("/test")
     def index(): return "ok"
-    
+
     client = TestClient(app)
     r = client.get("/openapi.json")
     assert r.status_code == 200
@@ -15,7 +16,7 @@ def test_openapi_has_paths():
     app = Ignyx()
     @app.post("/submit")
     def submit(): return "ok"
-    
+
     client = TestClient(app)
     r = client.get("/openapi.json")
     data = r.json()
@@ -40,7 +41,7 @@ def test_path_in_schema():
     app = Ignyx()
     @app.get("/hello/{name}")
     def hello(name: str): return name
-    
+
     client = TestClient(app)
     r = client.get("/openapi.json")
     data = r.json()

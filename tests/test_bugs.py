@@ -1,4 +1,5 @@
 import time
+
 from ignyx import Ignyx
 from ignyx.depends import BackgroundTask
 from ignyx.middleware import CORSMiddleware

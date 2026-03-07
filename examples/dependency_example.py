@@ -1,4 +1,4 @@
-from ignyx import Ignyx, Depends
+from ignyx import Depends, Ignyx
 
 app = Ignyx()
 

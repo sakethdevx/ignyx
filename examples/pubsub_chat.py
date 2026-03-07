@@ -20,7 +20,7 @@ HTML = """
             <input type="text" id="messageText" autocomplete="off" placeholder="Type a message..." style="width: 80%; padding: 5px;"/>
             <button type="submit" style="padding: 5px 10px;">Send</button>
         </form>
-        
+
         <script>
             var ws = new WebSocket("ws://localhost:8000/ws/chat_room_1");
             ws.onmessage = function(event) {
@@ -58,10 +58,10 @@ async def get_chat_ui():
 async def websocket_endpoint(ws):
     await ws.accept()
     # In a real app we'd get this from request.query_params or path
-    # But since Ignyx WebSocket handler currently doesn't wrap Request 
+    # But since Ignyx WebSocket handler currently doesn't wrap Request
     # and just passes the ws object, we'll sub to a static room for the demo
     await ws.subscribe("chat_room_1")
-    
+
     try:
         while True:
             await ws.receive_text()

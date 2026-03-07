@@ -7,10 +7,10 @@ def create_user(body: dict, request: Request):
     auth = request.headers.get("authorization")
     if not auth:
         return {"error": "Unauthorized"}, 401
-    
+
     # Check if query parsing worked
     source = request.query_params.get("source", "unknown")
-    
+
     return {"created": body.get("name"), "source": source}, 201
 
 @app.get("/search")

@@ -16,7 +16,6 @@ This example uses aiosqlite with the in-memory SQLite backend so it runs
 with zero external dependencies for demonstration purposes.
 """
 
-import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 
@@ -24,13 +23,13 @@ from typing import Any, AsyncGenerator
 # Optional real SQLAlchemy imports — gracefully mocked if not installed
 # ---------------------------------------------------------------------------
 try:
+    from sqlalchemy import Integer, String, select
     from sqlalchemy.ext.asyncio import (
         AsyncSession,
         async_sessionmaker,
         create_async_engine,
     )
     from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-    from sqlalchemy import select, Integer, String
     _SQLALCHEMY_AVAILABLE = True
 except ImportError:
     _SQLALCHEMY_AVAILABLE = False  # type: ignore[assignment]
@@ -39,7 +38,9 @@ try:
     from pydantic import BaseModel, Field
 except ImportError:
     BaseModel = object  # type: ignore[assignment, misc]
-    Field = lambda *a, **kw: None  # type: ignore[assignment]
+
+    def Field(*a, **kw):  # type: ignore[no-redef]
+        return None
 
 from ignyx import Depends, Ignyx
 from ignyx.responses import JSONResponse

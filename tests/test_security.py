@@ -1,6 +1,7 @@
-from ignyx import Ignyx, Depends
+from ignyx import Depends, Ignyx
+from ignyx.security import APIKeyHeader, HTTPBasic, OAuth2PasswordBearer
 from ignyx.testclient import TestClient
-from ignyx.security import OAuth2PasswordBearer, APIKeyHeader, HTTPBasic
+
 
 def test_oauth2_valid():
     app = Ignyx()

@@ -176,10 +176,10 @@ class GZipMiddleware(Middleware):
 class SessionMiddleware(Middleware):
     """
     Stateful session management middleware powered by Rust AES-GCM encryption.
-    
+
     This middleware enables the `request.session` dictionary.
     The secret key must be provided to securely encrypt and tamper-proof the session cookie.
-    
+
     Usage:
         app.add_middleware(SessionMiddleware(secret_key="your-32-byte-secret-key-here"))
     """

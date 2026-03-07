@@ -1,17 +1,18 @@
-from ignyx import Ignyx
-from ignyx.testclient import TestClient
-from ignyx.middleware import Middleware, CORSMiddleware
-from ignyx.responses import PlainTextResponse
 import time
-import pytest
+
+from ignyx import Ignyx
+from ignyx.middleware import CORSMiddleware, Middleware
+from ignyx.responses import PlainTextResponse
+from ignyx.testclient import TestClient
+
 
 def test_cors_headers_present():
     app = Ignyx()
     app.add_middleware(CORSMiddleware(allow_origins=["*"], allow_headers=["*"], allow_methods=["*"]))
-    
+
     @app.get("/")
     def index(): return "ok"
-    
+
     client = TestClient(app)
     r = client.get("/")
     assert r.status_code == 200
@@ -21,10 +22,10 @@ def test_cors_headers_present():
 def test_cors_preflight():
     app = Ignyx()
     app.add_middleware(CORSMiddleware(allow_origins=["http://example.com"], allow_methods=["GET"]))
-    
+
     @app.get("/")
     def index(): return "ok"
-    
+
     client = TestClient(app)
     r = client._request("OPTIONS", "/")
     assert r.status_code == 200
@@ -32,10 +33,10 @@ def test_cors_preflight():
 
 def test_rate_limit():
     app = Ignyx(rate_limit_requests=2, rate_limit_window=60)
-    
+
     @app.get("/")
     def index(): return "ok"
-    
+
     client = TestClient(app)
     r1 = client.get("/")
     assert r1.status_code == 200
@@ -47,10 +48,10 @@ def test_rate_limit():
 
 def test_rate_limit_resets():
     app = Ignyx(rate_limit_requests=1, rate_limit_window=1)
-    
+
     @app.get("/")
     def index(): return "ok"
-    
+
     client = TestClient(app)
     r1 = client.get("/")
     assert r1.status_code == 200
@@ -62,7 +63,7 @@ def test_rate_limit_resets():
 
 def test_custom_middleware_order():
     app = Ignyx()
-    
+
     class MiddlewareA(Middleware):
         def before_request(self, req):
             req.headers["X-Trace"] = "A"
@@ -73,7 +74,7 @@ def test_custom_middleware_order():
             if isinstance(res, tuple):
                 return (res[0], res[1], headers)
             return (res, 200, headers)
-            
+
     class MiddlewareB(Middleware):
         def before_request(self, req):
             req.headers["X-Trace"] += "B"
@@ -84,14 +85,14 @@ def test_custom_middleware_order():
             if isinstance(res, tuple):
                 return (res[0], res[1], headers)
             return (res, 200, headers)
-            
+
     app.add_middleware(MiddlewareA())
     app.add_middleware(MiddlewareB())
-    
+
     @app.get("/")
-    def index(request): 
+    def index(request):
         return PlainTextResponse(request.headers.get("X-Trace", ""))
-        
+
     client = TestClient(app)
     r = client.get("/")
     assert r.status_code == 200

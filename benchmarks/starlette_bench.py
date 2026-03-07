@@ -1,6 +1,7 @@
 from starlette.applications import Starlette
-from starlette.responses import PlainTextResponse, JSONResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
+
 
 def hello(request):
     return JSONResponse({"message": "Hello, World!"})
