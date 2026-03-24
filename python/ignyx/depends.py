@@ -11,7 +11,17 @@ import asyncio
 import concurrent.futures
 import inspect
 import logging
-from typing import Any, Annotated, Callable, Dict, List, Optional, Tuple, get_args, get_origin
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    get_args,
+    get_origin,
+)
 
 logger = logging.getLogger(__name__)
 
