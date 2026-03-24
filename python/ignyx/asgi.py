@@ -38,7 +38,7 @@ import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, unquote_plus
 
-from ignyx.depends import BackgroundTask, BackgroundTasks, resolve_dependencies
+from ignyx.depends import BackgroundTask, BackgroundTasks, resolve_dependencies, unwrap_annotated
 from ignyx.exceptions import HTTPException
 from ignyx.request import Headers
 from ignyx.responses import BaseResponse
@@ -359,6 +359,8 @@ async def _build_kwargs(
         ann = param.annotation
         if ann is inspect.Parameter.empty:
             ann = None
+        else:
+            ann = unwrap_annotated(ann)
 
         # ── request ──────────────────────────────────────────────────────────
         if name == "request":

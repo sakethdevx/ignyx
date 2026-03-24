@@ -213,20 +213,64 @@ impl Server {
                 }
             }
 
-            // Cache: does this handler have Depends() defaults?
+            // Cache: does this handler declare any Depends() (default or Annotated)?
             let has_depends = if let Ok(sig) = inspect.call_method1("signature", (&handler,)) {
                 if let Ok(params_proxy) = sig.getattr("parameters") {
                     if let Ok(values_iter) = params_proxy.call_method0("values") {
                         if let Ok(_iter) = values_iter.try_iter() {
                             let depends_mod = py.import("ignyx.depends").ok();
                             let depends_class = depends_mod.and_then(|m| m.getattr("Depends").ok());
+                            let (get_origin, get_args, annotated) = py
+                                .import("typing")
+                                .ok()
+                                .map(|m| {
+                                    (
+                                        m.getattr("get_origin").ok(),
+                                        m.getattr("get_args").ok(),
+                                        m.getattr("Annotated").ok(),
+                                    )
+                                })
+                                .unwrap_or((None, None, None));
                             let mut found = false;
                             for param in values_iter.try_iter().unwrap().flatten() {
+                                let Some(ref dep_cls) = depends_class else {
+                                    break;
+                                };
+
+                                // FastAPI-style: user = Depends(get_user)
                                 if let Ok(default) = param.getattr("default") {
-                                    if let Some(ref dep_cls) = depends_class {
-                                        if default.is_instance(dep_cls).unwrap_or(false) {
-                                            found = true;
-                                            break;
+                                    if default.is_instance(dep_cls).unwrap_or(false) {
+                                        found = true;
+                                        break;
+                                    }
+                                }
+
+                                // Modern: user: Annotated[User, Depends(get_user)]
+                                if let (Some(go), Some(ga), Some(ann_form)) =
+                                    (&get_origin, &get_args, &annotated)
+                                {
+                                    if let Ok(annotation) = param.getattr("annotation") {
+                                        if let Ok(origin) = go.call1((annotation.clone(),)) {
+                                            if origin.is(ann_form) {
+                                                if let Ok(args_obj) = ga.call1((annotation,)) {
+                                                    if let Ok(args) = args_obj
+                                                        .downcast::<pyo3::types::PyTuple>()
+                                                    {
+                                                        for meta in args.iter().skip(1) {
+                                                            if meta
+                                                                .is_instance(dep_cls)
+                                                                .unwrap_or(false)
+                                                            {
+                                                                found = true;
+                                                                break;
+                                                            }
+                                                        }
+                                                        if found {
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }

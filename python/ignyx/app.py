@@ -8,7 +8,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 from ignyx._core import PubSub, Server
-from ignyx.depends import BackgroundTask, BackgroundTasks
+from ignyx.depends import BackgroundTask, BackgroundTasks, unwrap_annotated
 from ignyx.middleware import ErrorHandlerMiddleware, Middleware
 from ignyx.openapi import (
     REDOC_HTML,
@@ -36,7 +36,7 @@ class Ignyx:
     def __init__(
         self,
         title: str = "Ignyx",
-        version: str = "2.10.0",
+        version: str = "2.12.0",
         debug: bool = False,
         description: str = "",
         docs_url: str = "/docs",
@@ -115,7 +115,7 @@ class Ignyx:
             bg_params: List[str] = [
                 name
                 for name, param in sig.parameters.items()
-                if param.annotation in (BackgroundTasks, BackgroundTask)
+                if unwrap_annotated(param.annotation) in (BackgroundTasks, BackgroundTask)
             ]
         except (ValueError, TypeError):
             bg_params = []

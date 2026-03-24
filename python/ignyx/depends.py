@@ -11,7 +11,7 @@ import asyncio
 import concurrent.futures
 import inspect
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Annotated, Callable, Dict, List, Optional, Tuple, get_args, get_origin
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +176,32 @@ class BackgroundTask(BackgroundTasks):
             self.add_task(func, *args, **kwargs)
 
 
+def unwrap_annotated(annotation: Any) -> Any:
+    """Return the underlying type for ``typing.Annotated[T, ...]`` annotations."""
+    if annotation is inspect.Parameter.empty:
+        return annotation
+    origin = get_origin(annotation)
+    if origin is Annotated:
+        args = get_args(annotation)
+        if args:
+            return args[0]
+    return annotation
+
+
+def _depends_from_annotated(annotation: Any) -> Optional["Depends"]:
+    """Extract a :class:`Depends` marker from a ``typing.Annotated`` annotation."""
+    if annotation is inspect.Parameter.empty:
+        return None
+    origin = get_origin(annotation)
+    if origin is not Annotated:
+        return None
+    args = get_args(annotation)
+    for meta in args[1:]:
+        if isinstance(meta, Depends):
+            return meta
+    return None
+
+
 def resolve_dependencies(
     handler: Callable[..., Any],
     request: Any = None,
@@ -194,37 +220,44 @@ def resolve_dependencies(
     resolved: Dict[str, Any] = {}
 
     for name, param in sig.parameters.items():
+        dep: Optional[Depends]
         if isinstance(param.default, Depends):
             dep = param.default
-            func = dep.dependency
+        else:
+            dep = _depends_from_annotated(param.annotation)
 
-            if func in overrides:
-                resolved[name] = overrides[func]
-                continue
+        if dep is None:
+            continue
 
-            if dep.use_cache and func in cache:
-                resolved[name] = cache[func]
-                continue
+        func = dep.dependency
 
-            # Resolve inner dependencies (recursion)
-            inner_deps = resolve_dependencies(func, request, overrides, cache)
+        if func in overrides:
+            resolved[name] = overrides[func]
+            continue
 
-            # Call the dependency with resolved inner dependencies and optional request
-            dep_sig = inspect.signature(func)
-            kwargs = inner_deps.copy()
-            if "request" in dep_sig.parameters and "request" not in kwargs:
-                kwargs["request"] = request
+        if dep.use_cache and func in cache:
+            resolved[name] = cache[func]
+            continue
 
-            result = func(**kwargs)
-            if inspect.isgenerator(result):
-                # Generator-based dependency (with cleanup)
-                value = next(result)
-                # Note: Cleanup (yield) is not yet supported in this simple sync implementation
-            else:
-                value = result
+        # Resolve inner dependencies (recursion)
+        inner_deps = resolve_dependencies(func, request, overrides, cache)
 
-            if dep.use_cache:
-                cache[func] = value
-            resolved[name] = value
+        # Call the dependency with resolved inner dependencies and optional request
+        dep_sig = inspect.signature(func)
+        kwargs = inner_deps.copy()
+        if "request" in dep_sig.parameters and "request" not in kwargs:
+            kwargs["request"] = request
+
+        result = func(**kwargs)
+        if inspect.isgenerator(result):
+            # Generator-based dependency (with cleanup)
+            value = next(result)
+            # Note: Cleanup (yield) is not yet supported in this simple sync implementation
+        else:
+            value = result
+
+        if dep.use_cache:
+            cache[func] = value
+        resolved[name] = value
 
     return resolved

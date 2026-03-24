@@ -58,4 +58,4 @@ __all__ = [
     "ErrorHandlerMiddleware",
     "GZipMiddleware",
 ]
-__version__ = "2.10.0"
+__version__ = "2.12.0"

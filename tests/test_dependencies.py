@@ -19,6 +19,35 @@ def test_depends_basic():
     r = client.get("/", headers={"Authorization": "Bearer 123"})
     assert r.json() == {"token": "Bearer 123"}
 
+
+def test_depends_annotated():
+    from typing import Annotated
+
+    app = Ignyx()
+    calls = {"count": 0}
+
+    def get_token(request: Request) -> str:
+        return request.headers.get("Authorization", "")
+
+    def counter() -> int:
+        calls["count"] += 1
+        return calls["count"]
+
+    @app.get("/")
+    def index(
+        token: Annotated[str, Depends(get_token)],
+        v1: Annotated[int, Depends(counter)],
+        v2: Annotated[int, Depends(counter)],
+    ):
+        return {"token": token, "v1": v1, "v2": v2}
+
+    client = TestClient(app)
+    r = client.get("/", headers={"Authorization": "Bearer 123"})
+    assert r.status_code == 200
+    assert r.json() == {"token": "Bearer 123", "v1": 1, "v2": 1}
+    assert calls["count"] == 1
+
+
 def test_depends_raises():
     app = Ignyx()
     def check_user():
@@ -136,4 +165,3 @@ def test_depends_no_cache():
     assert r.status_code == 200
     assert calls["count"] == 2  # Called twice — no caching
     assert r.json() == {"v1": 1, "v2": 2}
-
