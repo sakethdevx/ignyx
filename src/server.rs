@@ -253,8 +253,8 @@ impl Server {
                                         if let Ok(origin) = go.call1((annotation.clone(),)) {
                                             if origin.is(ann_form) {
                                                 if let Ok(args_obj) = ga.call1((annotation,)) {
-                                                    if let Ok(args) = args_obj
-                                                        .downcast::<pyo3::types::PyTuple>()
+                                                    if let Ok(args) =
+                                                        args_obj.downcast::<pyo3::types::PyTuple>()
                                                     {
                                                         for meta in args.iter().skip(1) {
                                                             if meta
