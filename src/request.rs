@@ -101,19 +101,19 @@ impl Request {
     /// Headers as JSON string (backward compatibility for external code).
     #[getter]
     pub fn headers(&self) -> String {
-        serde_json::to_string(&self.headers_map).unwrap_or_else(|_| "{}".to_string())
+        simd_json::to_string(&self.headers_map).unwrap_or_else(|_| "{}".to_string())
     }
 
     /// Query params as JSON string (backward compatibility).
     #[getter]
     pub fn query_params(&self) -> String {
-        serde_json::to_string(&self.query_params_map).unwrap_or_else(|_| "{}".to_string())
+        simd_json::to_string(&self.query_params_map).unwrap_or_else(|_| "{}".to_string())
     }
 
     /// Path params as JSON string (backward compatibility).
     #[getter]
     pub fn path_params(&self) -> String {
-        serde_json::to_string(&self.path_params_map).unwrap_or_else(|_| "{}".to_string())
+        simd_json::to_string(&self.path_params_map).unwrap_or_else(|_| "{}".to_string())
     }
 
     /// Get body as UTF-8 string
@@ -124,8 +124,8 @@ impl Request {
 
     /// Parse body as JSON (returns Python dict)
     pub fn json(&self, py: Python<'_>) -> PyResult<PyObject> {
-        let text = self.text()?;
-        let value: serde_json::Value = serde_json::from_str(&text)
+        let mut text = self.text()?;
+        let value: serde_json::Value = simd_json::from_str(text.as_mut_str())
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         json_value_to_py(py, &value)
     }
@@ -216,6 +216,6 @@ pub fn py_to_json_value(
 /// Serialize a Python object directly to a JSON byte string, bypassing Python's json module.
 pub fn py_to_json_string(py: Python<'_>, obj: &Bound<'_, pyo3::types::PyAny>) -> PyResult<String> {
     let value = py_to_json_value(py, obj)?;
-    serde_json::to_string(&value)
+    simd_json::to_string(&value)
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
 }

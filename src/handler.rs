@@ -277,7 +277,8 @@ pub(crate) fn call_python_handler(
                 .map(|(_, v)| v.to_str().unwrap_or("").contains("application/json"))
                 .unwrap_or(false);
             if is_json && !body_bytes.is_empty() {
-                if let Ok(v) = serde_json::from_slice::<serde_json::Value>(body_bytes) {
+                let mut json_buf = body_bytes.to_vec();
+                if let Ok(v) = simd_json::from_slice::<serde_json::Value>(&mut json_buf) {
                     if let Ok(py_obj) = crate::request::json_value_to_py(py, &v) {
                         let mut used_pd = false;
                         if let Some(ref mc) = handler_sig.pydantic_body_model {
@@ -425,7 +426,8 @@ pub(crate) fn call_python_handler(
                                     }
                                 }
                             }
-                            let eb = serde_json::json!({"detail": dt}).to_string();
+                            let eb = simd_json::to_string(&serde_json::json!({"detail": dt}))
+                                .unwrap_or_else(|_| "{\"detail\":\"Serialization error\"}".into());
                             return Ok(HandlerOutput::Full(
                                 eb,
                                 "application/json".to_string(),
@@ -612,7 +614,7 @@ pub(crate) fn call_python_handler(
             (s, "text/html; charset=utf-8".to_string())
         } else {
             // Serialize string as JSON value (adds quotes)
-            let js = serde_json::to_string(&s)
+            let js = simd_json::to_string(&s)
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
             (js, "application/json".to_string())
         }

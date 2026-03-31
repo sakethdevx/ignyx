@@ -737,16 +737,17 @@ async fn handle_request(
 
             if is_json_body && !body_bytes.is_empty() {
                 if let Some(ref schema) = handler.pydantic_json_schema {
+                    let mut json_buf = body_bytes.clone();
                     if let Ok(ref json_val) =
-                        serde_json::from_slice::<serde_json::Value>(&body_bytes)
+                        simd_json::from_slice::<serde_json::Value>(&mut json_buf)
                     {
                         if let Err(errors) = crate::handler::validate_json_schema(json_val, schema)
                         {
-                            let error_body = serde_json::json!({
+                            let error_body = simd_json::to_string(&serde_json::json!({
                                 "error": "Validation failed",
                                 "detail": errors
-                            })
-                            .to_string();
+                            }))
+                            .unwrap_or_else(|_| "{\"error\":\"Validation failed\"}".to_string());
                             let mut response = HyperResponse::builder()
                                 .status(422)
                                 .header("content-type", "application/json")
