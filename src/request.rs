@@ -216,6 +216,5 @@ pub fn py_to_json_value(
 /// Serialize a Python object directly to a JSON byte string, bypassing Python's json module.
 pub fn py_to_json_string(py: Python<'_>, obj: &Bound<'_, pyo3::types::PyAny>) -> PyResult<String> {
     let value = py_to_json_value(py, obj)?;
-    simd_json::to_string(&value)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+    simd_json::to_string(&value).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
 }
