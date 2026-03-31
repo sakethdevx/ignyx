@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString};
+use simd_json::SIMDJSON_PADDING;
 use std::collections::HashMap;
 
 /// Python-facing Request object.
@@ -125,7 +126,9 @@ impl Request {
     /// Parse body as JSON (returns Python dict)
     pub fn json(&self, py: Python<'_>) -> PyResult<PyObject> {
         let mut text = self.text()?;
-        let value: serde_json::Value = simd_json::from_str(text.as_mut_str())
+        // simd-json requires the input string to have at least SIMDJSON_PADDING extra bytes.
+        text.reserve(SIMDJSON_PADDING);
+        let value: serde_json::Value = unsafe { simd_json::from_str(text.as_mut_str()) }
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         json_value_to_py(py, &value)
     }
