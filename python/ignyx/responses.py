@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Any, Dict, Optional, Union
 
@@ -75,6 +76,45 @@ class HTMLResponse(BaseResponse):
         "Initialize the HTML response."
         super().__init__(content, status_code, headers)
         self.content_type = "text/html; charset=utf-8"
+
+
+class HTMXResponse(HTMLResponse):
+    """HTML response helper that emits HX-* headers for htmx."""
+
+    _HX_MAP = {
+        "hx_trigger": "HX-Trigger",
+        "hx_trigger_after_settle": "HX-Trigger-After-Settle",
+        "hx_trigger_after_swap": "HX-Trigger-After-Swap",
+        "hx_redirect": "HX-Redirect",
+        "hx_refresh": "HX-Refresh",
+        "hx_push_url": "HX-Push-Url",
+        "hx_replace_url": "HX-Replace-Url",
+        "hx_reswap": "HX-Reswap",
+        "hx_retarget": "HX-Retarget",
+        "hx_location": "HX-Location",
+    }
+
+    def __init__(
+        self,
+        content: str,
+        status_code: int = 200,
+        headers: Optional[Dict[str, str]] = None,
+        **hx_kwargs: Any,
+    ) -> None:
+        super().__init__(content, status_code, headers)
+        for key, header_name in self._HX_MAP.items():
+            if key not in hx_kwargs:
+                continue
+            value = hx_kwargs[key]
+            if value is None:
+                continue
+            if key == "hx_refresh" and isinstance(value, bool):
+                formatted = "true" if value else "false"
+            elif isinstance(value, (dict, list)):
+                formatted = json.dumps(value)
+            else:
+                formatted = str(value)
+            self.headers[header_name] = formatted
 
 
 class PlainTextResponse(BaseResponse):

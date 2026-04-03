@@ -20,3 +20,11 @@ def test_cookie_read(client):
         headers={"Cookie": "test_cookie=hello"})
     assert r.status_code == 200
     assert r.json()["cookie"] == "hello"
+
+
+def test_htmx_response_headers(client):
+    r = client.get("/htmx")
+    assert r.status_code == 200
+    assert r.headers["HX-Trigger"] == '{"toast": true}'
+    assert r.headers["HX-Redirect"] == "/next"
+    assert r.headers["HX-Push-Url"] == "/pushed"

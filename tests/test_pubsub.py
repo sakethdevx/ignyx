@@ -14,6 +14,14 @@ def run_server(app, port):
 
 @pytest.mark.asyncio
 async def test_pubsub_broadcast():
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("127.0.0.1", 0))
+        s.close()
+    except PermissionError:
+        pytest.skip("socket bind not permitted in this environment")
+
     app = Ignyx()
 
     @app.websocket("/ws")
@@ -60,6 +68,5 @@ async def test_pubsub_broadcast():
 
         assert msg1 == "Hello PubSub!"
         assert msg2 == "Hello PubSub!"
-
 
 

@@ -35,6 +35,7 @@ import asyncio
 import inspect
 import json
 import re
+import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, unquote_plus
 
@@ -83,6 +84,7 @@ class ASGIRequest:
         "_json_cache",
         "_text_cache",
         "_cookies_cache",
+        "session",
     )
 
     def __init__(
@@ -102,6 +104,7 @@ class ASGIRequest:
         self._json_cache: Optional[Any] = None
         self._text_cache: Optional[str] = None
         self._cookies_cache: Optional[Dict[str, str]] = None
+        self.session: Dict[str, Any] = {}
 
     # ── Headers ──────────────────────────────────────────────────────────────
 
@@ -257,6 +260,11 @@ def _serialize_result(result: Any) -> Tuple[int, str, bytes, Dict[str, str], boo
             status = int(parts[1])
         if len(parts) >= 3 and isinstance(parts[2], dict):
             extra_headers.update({k.lower(): v for k, v in parts[2].items()})
+        if len(parts) >= 4 and isinstance(parts[3], BackgroundTask):
+            try:
+                parts[3].execute()
+            except Exception:
+                pass
         # 4th element can be a BackgroundTask (already executed by dispatch)
 
     # ── Streaming ────────────────────────────────────────────────────────────
@@ -351,6 +359,38 @@ async def _build_kwargs(
     # Lazily read body once if we need it
     body_bytes: Optional[bytes] = None
     body_json: Any = None
+    multipart_cache: Optional[Dict[str, Tuple[str, str, bytes]]] = None
+
+    def _parse_multipart(raw: bytes, boundary: str) -> Dict[str, Tuple[str, str, bytes]]:
+        parts: Dict[str, Tuple[str, str, bytes]] = {}
+        delimiter = f"--{boundary}".encode()
+        for chunk in raw.split(delimiter):
+            chunk = chunk.strip()
+            if not chunk or chunk == b"--":
+                continue
+            header_block, _, data = chunk.partition(b"\r\n\r\n")
+            if not header_block:
+                continue
+            headers: Dict[str, str] = {}
+            for line in header_block.decode("utf-8", errors="ignore").split("\r\n"):
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    headers[k.lower().strip()] = v.strip()
+            disp = headers.get("content-disposition", "")
+            name = ""
+            filename = ""
+            for token in disp.split(";"):
+                token = token.strip()
+                if token.startswith("name="):
+                    name = token[5:].strip('"')
+                elif token.startswith("filename="):
+                    filename = token[9:].strip('"')
+            if not name:
+                continue
+            file_data = data.rstrip(b"\r\n")
+            ctype = headers.get("content-type", "application/octet-stream")
+            parts[name] = (filename or name, ctype, file_data)
+        return parts
 
     for name, param in sig.parameters.items():
         if name in kwargs:
@@ -370,6 +410,32 @@ async def _build_kwargs(
         # ── BackgroundTasks / BackgroundTask → injected by dispatch ──────────
         if ann in (BackgroundTasks, BackgroundTask):
             continue  # dispatch wrapper will inject these
+
+        # ── UploadFile (multipart) ───────────────────────────────────────────
+        try:
+            from ignyx.uploads import UploadFile as _UploadFile
+        except Exception:  # pragma: no cover - import guard
+            _UploadFile = None
+
+        if _UploadFile is not None and ann is _UploadFile:
+            content_type = request.headers.get("content-type", "")
+            if body_bytes is None:
+                body_bytes = await request.body()
+            if "multipart/form-data" in content_type and body_bytes:
+                if multipart_cache is None:
+                    boundary_key = "boundary="
+                    if boundary_key in content_type:
+                        boundary = content_type.split(boundary_key, 1)[1]
+                        boundary = boundary.split(";", 1)[0].strip().strip('"')
+                        multipart_cache = _parse_multipart(body_bytes, boundary)
+                    else:
+                        multipart_cache = {}
+                if multipart_cache:
+                    part = multipart_cache.get(name)
+                    if part:
+                        filename, ctype, data = part
+                        kwargs[name] = _UploadFile(filename, ctype, data)
+                        continue
 
         # ── path params ───────────────────────────────────────────────────────
         if name in path_params:
@@ -409,10 +475,11 @@ async def _build_kwargs(
                         body_json = {}
                 # Try Pydantic validation if annotation looks like a model
                 if ann is not None and hasattr(ann, "model_validate"):
+                    from ignyx.exceptions import HTTPException
                     try:
                         kwargs["body"] = ann.model_validate(body_json)
-                    except Exception:
-                        kwargs["body"] = body_json
+                    except Exception as exc:  # noqa: BLE001
+                        raise HTTPException(422, "Invalid request body", headers={}) from exc
                 else:
                     kwargs["body"] = body_json
             elif body_bytes:
@@ -441,6 +508,9 @@ class IgnyxASGI:
     def __init__(self, app: Any) -> None:
         self._app = app
         self._compiled_routes: List[_CompiledRoute] = []
+        self._rate_limit_requests = app._rate_limit_requests
+        self._rate_limit_window = app._rate_limit_window
+        self._rate_limit_state: Dict[str, Tuple[int, float]] = {}
         self._rebuild_routes()
 
     # ── Route compilation ─────────────────────────────────────────────────────
@@ -534,6 +604,21 @@ class IgnyxASGI:
     ) -> None:
         method: str = scope.get("method", "GET").upper()
         path: str = scope.get("path", "/")
+        client_id = scope.get("client", ("anonymous", 0))[0]
+
+        # ── Rate limiting (ASGI-only fallback) ─────────────────────────────
+        if self._rate_limit_requests:
+            now = time.monotonic()
+            count, reset_at = self._rate_limit_state.get(client_id, (0, now + self._rate_limit_window))
+            if now > reset_at:
+                count, reset_at = 0, now + self._rate_limit_window
+            if count >= self._rate_limit_requests:
+                retry_after = int(self._rate_limit_window)
+                body_bytes = json.dumps({"detail": "Rate limit exceeded"}).encode()
+                headers = {"retry-after": str(retry_after)}
+                await _send_response(send, 429, "application/json", body_bytes, headers)
+                return
+            self._rate_limit_state[client_id] = (count + 1, reset_at)
 
         # Rebuild routes in case new routes were registered after __init__
         # (e.g. docs routes added by _register_docs_routes)
@@ -594,7 +679,8 @@ class IgnyxASGI:
             err_resp = self._app._handle_exception(request, exc, exc.status_code)
             if err_resp is None:
                 err_body = json.dumps({"detail": exc.detail}).encode()
-                await _send_response(send, exc.status_code, "application/json", err_body)
+                headers = getattr(exc, "headers", {}) or {}
+                await _send_response(send, exc.status_code, "application/json", err_body, headers)
             else:
                 status, ct, body, hdrs, streaming, iterator = _serialize_result(err_resp)
                 if streaming:
@@ -622,8 +708,8 @@ class IgnyxASGI:
                     await _send_response(send, 500, "application/json", err_body)
                     return
 
-        # ── Apply after_request middleware ────────────────────────────────────
-        for mw in self._app._middlewares:
+        # ── Apply after_request middleware (reverse order) ───────────────────
+        for mw in reversed(self._app._middlewares):
             if hasattr(mw, "after_request"):
                 try:
                     result = mw.after_request(request, raw_result)

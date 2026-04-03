@@ -1,7 +1,7 @@
 import pytest
 from ignyx import HTTPException, Ignyx, Router
 from ignyx.request import Request
-from ignyx.responses import HTMLResponse, JSONResponse, RedirectResponse
+from ignyx.responses import HTMLResponse, HTMXResponse, JSONResponse, RedirectResponse
 from ignyx.testclient import TestClient
 from ignyx.uploads import UploadFile
 from pydantic import BaseModel
@@ -32,6 +32,15 @@ def client():
 
     @app.get("/redirect")
     def redirect(): return RedirectResponse("/health", status_code=301)
+
+    @app.get("/htmx")
+    def htmx():
+        return HTMXResponse(
+            "<div>ok</div>",
+            hx_trigger={"toast": True},
+            hx_redirect="/next",
+            hx_push_url="/pushed",
+        )
 
     @app.get("/raise-404")
     def raise_404(): raise HTTPException(404, "not found here")

@@ -36,7 +36,7 @@ class Ignyx:
     def __init__(
         self,
         title: str = "Ignyx",
-        version: str = "2.13.0",
+        version: str = "2.14.0",
         debug: bool = False,
         description: str = "",
         docs_url: str = "/docs",
@@ -206,13 +206,14 @@ class Ignyx:
         if method != "OPTIONS" and not any(
             r["path"] == path and r["method"] == "OPTIONS" for r in self._routes
         ):
-            opts_dispatch = self._create_dispatch(lambda request: "")
+            options_handler = lambda request: ""
+            opts_dispatch = self._create_dispatch(options_handler)
             self._server.add_route("OPTIONS", path, opts_dispatch)
             self._routes.append(
                 {
                     "method": "OPTIONS",
                     "path": path,
-                    "handler": lambda req: "",
+                    "handler": options_handler,
                     "dispatch": opts_dispatch,
                     "name": "options",
                 }
@@ -311,7 +312,18 @@ class Ignyx:
             return app(file_path)
 
         # Register a catch-all route for the mounted path
-        self._server.add_route("GET", mount_path + "/{*file_path}", static_handler)
+        full_path = mount_path + "/{*file_path}"
+        dispatch = self._create_dispatch(static_handler)
+        self._server.add_route("GET", full_path, dispatch)
+        self._routes.append(
+            {
+                "method": "GET",
+                "path": full_path,
+                "handler": static_handler,
+                "dispatch": dispatch,
+                "name": "static",
+            }
+        )
 
     def openapi(self) -> Dict[str, Any]:
         """Get the OpenAPI schema, generating it if needed."""
@@ -333,6 +345,13 @@ class Ignyx:
             return schema
 
         self._server.add_route("GET", self.openapi_url, openapi_json)
+        self._routes.append({
+            "method": "GET",
+            "path": self.openapi_url,
+            "handler": openapi_json,
+            "dispatch": self._create_dispatch(openapi_json),
+            "name": "openapi_json",
+        })
 
         # Swagger UI
         swagger_html = SWAGGER_UI_HTML.format(
@@ -344,6 +363,13 @@ class Ignyx:
             return swagger_html
 
         self._server.add_route("GET", self.docs_url, swagger_ui)
+        self._routes.append({
+            "method": "GET",
+            "path": self.docs_url,
+            "handler": swagger_ui,
+            "dispatch": self._create_dispatch(swagger_ui),
+            "name": "swagger_ui",
+        })
 
         # ReDoc
         redoc_html = REDOC_HTML.format(
@@ -355,6 +381,13 @@ class Ignyx:
             return redoc_html
 
         self._server.add_route("GET", self.redoc_url, redoc)
+        self._routes.append({
+            "method": "GET",
+            "path": self.redoc_url,
+            "handler": redoc,
+            "dispatch": self._create_dispatch(redoc),
+            "name": "redoc",
+        })
 
     def dependency_overrides(self) -> Dict[Callable[..., Any], Any]:
         """Get the dependency overrides dict (for testing)."""

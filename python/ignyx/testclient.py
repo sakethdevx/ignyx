@@ -1,6 +1,5 @@
+import asyncio
 import json
-import threading
-import time
 from typing import Any
 
 import httpx
@@ -16,34 +15,29 @@ class TestResponse:
     def json(self) -> Any:
         return json.loads(self.text)
 
+
 class TestClient:
+    """In-process test client using ASGITransport (no sockets required)."""
+
     def __init__(self, app: Any) -> None:
-        import socket
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(("", 0))
-        port = s.getsockname()[1]
-        s.close()
+        self._asgi_app = app.asgi()
+        # Manually invoke startup hooks since ASGITransport in this environment
+        # does not manage lifespan events.
+        for handler in getattr(app, "_startup_handlers", []):
+            if asyncio.iscoroutinefunction(handler):
+                asyncio.run(handler())
+            else:
+                handler()
 
-        self._app = app
-        self._base = f"http://127.0.0.1:{port}"
-        self._thread = threading.Thread(
-            target=lambda: app.run(host="127.0.0.1", port=port), daemon=True
-        )
-        self._thread.start()
-
-        # Poll until server is up
-        for _ in range(30):
-            try:
-                # Use a raw socket to test if port is bound instead of httpx
-                # to avoid logging 404/500 if we hit an endpoint.
-                with socket.create_connection(("127.0.0.1", port), timeout=0.1):
-                    break
-            except (ConnectionRefusedError, TimeoutError, OSError):
-                time.sleep(0.1)
+        transport = httpx.ASGITransport(app=self._asgi_app)
+        self._client = httpx.AsyncClient(transport=transport, base_url="http://ignyx.test")
 
     def _request(self, method: str, path: str, **kwargs: Any) -> TestResponse:
-        resp = httpx.request(method, self._base + path, **kwargs)
-        return TestResponse(resp.status_code, resp.content, resp.headers)
+        async def send() -> TestResponse:
+            resp = await self._client.request(method, path, **kwargs)
+            return TestResponse(resp.status_code, resp.content, resp.headers)
+
+        return asyncio.run(send())
 
     def get(self, path: str, **kwargs: Any) -> TestResponse:
         return self._request("GET", path, **kwargs)
@@ -59,3 +53,9 @@ class TestClient:
 
     def patch(self, path: str, **kwargs: Any) -> TestResponse:
         return self._request("PATCH", path, **kwargs)
+
+    def __del__(self) -> None:  # pragma: no cover - best-effort cleanup
+        try:
+            self._client.close()
+        except Exception:
+            pass

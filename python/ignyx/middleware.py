@@ -3,6 +3,8 @@ Middleware system for Ignyx.
 Supports before, after, and error middleware.
 """
 
+import base64
+import json
 import time
 import traceback
 from collections import defaultdict  # noqa: F401  # kept for backward compat
@@ -188,3 +190,48 @@ class SessionMiddleware(Middleware):
         "Initialize Session middleware with a secret key."
         self.secret_key = secret_key
 
+    @staticmethod
+    def _encode_session(data: Dict[str, Any]) -> str:
+        raw = json.dumps(data, separators=(",", ":")).encode()
+        return base64.urlsafe_b64encode(raw).decode()
+
+    @staticmethod
+    def _decode_session(token: str) -> Dict[str, Any]:
+        try:
+            raw = base64.urlsafe_b64decode(token.encode())
+            return json.loads(raw.decode())
+        except Exception:
+            return {}
+
+    def before_request(self, request: Any) -> Any:
+        request.session = {}
+        existing = request.cookies.get("session") if hasattr(request, "cookies") else None
+        if existing:
+            request.session = self._decode_session(existing)
+        request._session_snapshot = dict(request.session)
+        return request
+
+    def after_request(self, request: Any, response: Any) -> Any:
+        original = getattr(request, "_session_snapshot", {}) or {}
+        current = getattr(request, "session", {}) or {}
+        had_cookie = hasattr(request, "cookies") and request.cookies.get("session") is not None
+
+        if current == original and not (had_cookie and not current):
+            return response
+
+        body = response
+        status = 200
+        headers: Dict[str, str] = {}
+
+        if isinstance(response, tuple):
+            body = response[0]
+            status = response[1] if len(response) > 1 else 200
+            headers = response[2] if len(response) > 2 else {}
+
+        if current:
+            cookie_val = self._encode_session(current)
+            headers["set-cookie"] = f"session={cookie_val}; Path=/; HttpOnly"
+        else:
+            headers["set-cookie"] = "session=; Path=/; Max-Age=0; HttpOnly"
+
+        return (body, status, headers)
