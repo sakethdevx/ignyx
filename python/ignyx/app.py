@@ -206,7 +206,9 @@ class Ignyx:
         if method != "OPTIONS" and not any(
             r["path"] == path and r["method"] == "OPTIONS" for r in self._routes
         ):
-            options_handler = lambda request: ""
+            def options_handler(request):
+                return ""
+
             opts_dispatch = self._create_dispatch(options_handler)
             self._server.add_route("OPTIONS", path, opts_dispatch)
             self._routes.append(
