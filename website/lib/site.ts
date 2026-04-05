@@ -23,7 +23,7 @@ export function withBasePath(path: string) {
 
 export function docsPath(path = "/") {
   const normalized = path.startsWith("/") ? path : `/${path}`;
-  return withBasePath(`/docs${normalized === "/" ? "/" : normalized}`);
+  return `/docs${normalized === "/" ? "/" : normalized}`;
 }
 
 export function externalDocsUrl(path = "/") {
