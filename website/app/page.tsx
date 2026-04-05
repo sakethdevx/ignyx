@@ -7,7 +7,6 @@ import { GettingStartedSection } from "@/components/landing/getting-started-sect
 import { HeroSection } from "@/components/landing/hero-section";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { SiteHeader } from "@/components/landing/site-header";
-import { TestimonialsSection } from "@/components/landing/testimonials-section";
 import { UseCasesSection } from "@/components/landing/use-cases-section";
 import { WhyIgnyxSection } from "@/components/landing/why-ignyx-section";
 
@@ -21,7 +20,6 @@ export default function HomePage() {
       <CodeShowcaseSection />
       <WhyIgnyxSection />
       <UseCasesSection />
-      <TestimonialsSection />
       <GettingStartedSection />
       <DocsPreviewSection />
       <CtaSection />
