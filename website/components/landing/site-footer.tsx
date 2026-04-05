@@ -1,7 +1,7 @@
 import Image from "next/image";
 
 import { Github, Mail, MessageSquareMore, ScrollText } from "lucide-react";
-import { marketingDocsHref, siteConfig } from "@/lib/site";
+import { marketingDocsHref, siteConfig, withBasePath } from "@/lib/site";
 
 const footerLinks = [
   { label: "Docs", href: marketingDocsHref(), icon: ScrollText },
@@ -9,6 +9,8 @@ const footerLinks = [
   { label: "Community", href: `${siteConfig.githubUrl}/discussions`, icon: MessageSquareMore },
   { label: "Contact", href: "mailto:hello@ignyx.dev", icon: Mail },
 ];
+
+const logoPath = withBasePath("/ignyx-logo.svg");
 
 export function SiteFooter() {
   return (
@@ -18,7 +20,7 @@ export function SiteFooter() {
           <div className="flex h-[72px] w-[178px] items-center overflow-hidden rounded-[24px] border border-white/10 bg-[rgba(248,251,255,0.94)] px-3 py-2.5 shadow-[0_18px_40px_rgba(0,0,0,0.24)] backdrop-blur-sm sm:w-[190px]">
             <div className="relative -ml-0.5 h-full w-[182px] sm:w-[194px]">
               <Image
-                src="/ignyx-logo.svg"
+                src={logoPath}
                 alt="Ignyx logo"
                 fill
                 sizes="(min-width: 640px) 194px, 182px"

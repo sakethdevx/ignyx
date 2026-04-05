@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { marketingDocsHref, siteConfig } from "@/lib/site";
+import { marketingDocsHref, siteConfig, withBasePath } from "@/lib/site";
 
 const navItems = [
   { label: "Features", href: "#features" },
@@ -10,6 +10,8 @@ const navItems = [
   { label: "Docs Preview", href: "#docs-preview" },
   { label: "GitHub", href: siteConfig.githubUrl },
 ];
+
+const logoPath = withBasePath("/ignyx-logo.svg");
 
 export function SiteHeader() {
   return (
@@ -19,7 +21,7 @@ export function SiteHeader() {
           <div className="flex h-12 w-[146px] items-center overflow-hidden rounded-2xl border border-white/10 bg-[rgba(248,251,255,0.94)] px-2 py-1.5 shadow-[0_18px_40px_rgba(0,0,0,0.24)] backdrop-blur-sm sm:w-[158px]">
             <div className="relative -ml-0.5 h-full w-[150px] sm:w-[162px]">
               <Image
-                src="/ignyx-logo.svg"
+                src={logoPath}
                 alt="Ignyx logo"
                 fill
                 sizes="(min-width: 640px) 162px, 150px"
