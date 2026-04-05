@@ -1,6 +1,8 @@
 export const siteConfig = {
   basePath: process.env.NEXT_PUBLIC_BASE_PATH ?? "",
   githubUrl: "https://github.com/sakethdevx/ignyx",
+  docsSiteUrl:
+    process.env.NEXT_PUBLIC_DOCS_SITE_URL ?? "https://sakethdevx.github.io/ignyx/docs",
 };
 
 export function withBasePath(path: string) {
@@ -22,4 +24,10 @@ export function withBasePath(path: string) {
 export function docsPath(path = "/") {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   return withBasePath(`/docs${normalized === "/" ? "/" : normalized}`);
+}
+
+export function externalDocsUrl(path = "/") {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  const trimmedBase = siteConfig.docsSiteUrl.replace(/\/$/, "");
+  return normalized === "/" ? `${trimmedBase}/` : `${trimmedBase}${normalized}`;
 }
