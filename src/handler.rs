@@ -1,6 +1,8 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyString, PyTuple};
 use std::collections::HashMap;
+use std::path::PathBuf;
+use tracing::instrument;
 
 /// Output from a Python handler — either a full response or a streaming one.
 pub enum HandlerOutput {
@@ -76,6 +78,10 @@ pub fn validate_json_schema(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[instrument(
+    skip_all,
+    fields(method = %method, path = %path)
+)]
 pub(crate) fn call_python_handler(
     py: Python<'_>,
     handler_sig: &HandlerSignature,
@@ -86,7 +92,7 @@ pub(crate) fn call_python_handler(
     headers: &hyper::HeaderMap,
     body_bytes: &[u8],
     form_fields: &HashMap<String, String>,
-    form_files: &HashMap<String, (String, String, Vec<u8>)>,
+    form_files: &HashMap<String, (String, String, PathBuf)>,
     state: &crate::server::ServerState,
 ) -> HandlerResult {
     let handler = &handler_sig.handler;
@@ -238,11 +244,12 @@ pub(crate) fn call_python_handler(
                                 }
                             }
                         } else if name_str == "UploadFile" {
-                            if let Some((f, ct, d)) = form_files.get(name) {
+                            if let Some((f, ct, path)) = form_files.get(name) {
                                 if let Ok(u_mod) = py.import("ignyx.uploads") {
                                     if let Ok(u_cls) = u_mod.getattr("UploadFile") {
-                                        let b = pyo3::types::PyBytes::new(py, d);
-                                        if let Ok(u_obj) = u_cls.call1((f, ct, b)) {
+                                        if let Ok(u_obj) =
+                                            u_cls.call1((f, ct, path.to_string_lossy().as_ref()))
+                                        {
                                             if call_kwargs_opt.is_none() {
                                                 call_kwargs_opt = Some(PyDict::new(py));
                                             }

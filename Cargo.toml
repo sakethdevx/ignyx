@@ -1,6 +1,6 @@
 [package]
 name = "ignyx"
-version = "2.14.0"
+version = "3.0.0"
 edition = "2021"
 
 [lib]
@@ -31,6 +31,8 @@ dashmap = "6"
 jsonwebtoken = "9"
 aes-gcm = "0.10.3"
 rand = "0.10.0"
+tracing = "0.1"
+tracing-opentelemetry = "0.27"
 
 [profile.release]
 opt-level = 3

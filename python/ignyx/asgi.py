@@ -35,6 +35,7 @@ import asyncio
 import inspect
 import json
 import re
+import tempfile
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, unquote_plus
@@ -359,10 +360,10 @@ async def _build_kwargs(
     # Lazily read body once if we need it
     body_bytes: Optional[bytes] = None
     body_json: Any = None
-    multipart_cache: Optional[Dict[str, Tuple[str, str, bytes]]] = None
+    multipart_cache: Optional[Dict[str, Tuple[str, str, str]]] = None
 
-    def _parse_multipart(raw: bytes, boundary: str) -> Dict[str, Tuple[str, str, bytes]]:
-        parts: Dict[str, Tuple[str, str, bytes]] = {}
+    def _parse_multipart(raw: bytes, boundary: str) -> Dict[str, Tuple[str, str, str]]:
+        parts: Dict[str, Tuple[str, str, str]] = {}
         delimiter = f"--{boundary}".encode()
         for chunk in raw.split(delimiter):
             chunk = chunk.strip()
@@ -389,7 +390,10 @@ async def _build_kwargs(
                 continue
             file_data = data.rstrip(b"\r\n")
             ctype = headers.get("content-type", "application/octet-stream")
-            parts[name] = (filename or name, ctype, file_data)
+            with tempfile.NamedTemporaryFile(prefix="ignyx-upload-", delete=False) as tmp:
+                tmp.write(file_data)
+                temp_path = tmp.name
+            parts[name] = (filename or name, ctype, temp_path)
         return parts
 
     for name, param in sig.parameters.items():
@@ -433,8 +437,8 @@ async def _build_kwargs(
                 if multipart_cache:
                     part = multipart_cache.get(name)
                     if part:
-                        filename, ctype, data = part
-                        kwargs[name] = _UploadFile(filename, ctype, data)
+                        filename, ctype, file_path = part
+                        kwargs[name] = _UploadFile(filename, ctype, file_path)
                         continue
 
         # ── path params ───────────────────────────────────────────────────────

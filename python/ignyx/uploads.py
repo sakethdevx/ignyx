@@ -1,15 +1,22 @@
+import asyncio
+from pathlib import Path
+
+
 class UploadFile:
-    def __init__(self, filename: str, content_type: str, data: bytes):
+    def __init__(self, filename: str, content_type: str, file_path: str):
         self.filename = filename
         self.content_type = content_type
-        self._data = data
-        self.size = len(data)
+        self.path = Path(file_path)
+        self.size = self.path.stat().st_size if self.path.exists() else 0
 
     async def read(self) -> bytes:
-        return self._data
+        return await asyncio.to_thread(self.path.read_bytes)
 
     def read_sync(self) -> bytes:
-        return self._data
+        return self.path.read_bytes()
+
+    def open(self, mode: str = "rb"):
+        return self.path.open(mode)
 
     def __repr__(self) -> str:
         return f"UploadFile(filename={self.filename!r}, size={self.size})"

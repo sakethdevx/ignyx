@@ -1,6 +1,7 @@
 use crate::router::{Method, Router};
 use bytes::Bytes;
-use http_body_util::Full;
+use futures_util::TryStreamExt;
+use http_body_util::{BodyStream, Full};
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
@@ -12,8 +13,10 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Instant;
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
+use tracing::{info, instrument};
 
 // ── Streaming-capable response body ─────────────────────────────────────
 
@@ -526,6 +529,10 @@ async fn run_server(
     }
 }
 
+#[instrument(
+    skip(state, req),
+    fields(method = %req.method(), path = %req.uri().path())
+)]
 async fn handle_request(
     req: HyperRequest<Incoming>,
     state: Arc<ServerState>,
@@ -566,7 +573,7 @@ async fn handle_request(
     {
         let mut builder = HyperResponse::builder()
             .status(rl_status)
-            .header("server", "Ignyx/2.6.0");
+            .header("server", "Ignyx/3.0.0");
         for (k, v) in &rl_headers {
             builder = builder.header(k.as_str(), v.as_str());
         }
@@ -662,7 +669,7 @@ async fn handle_request(
             let mut builder = HyperResponse::builder()
                 .status(200)
                 .header("content-type", "text/plain")
-                .header("server", "Ignyx/2.3.0");
+                .header("server", "Ignyx/3.0.0");
 
             if let Some(h) = custom_headers {
                 for (k, v) in h {
@@ -678,7 +685,9 @@ async fn handle_request(
     }
 
     if let Some(router_method) = crate::router::Method::from_str(parts.method.as_str()) {
+        let routing_start = Instant::now();
         if let Some(route_match) = state.router.find(router_method, parts.uri.path()) {
+            let routing_elapsed = routing_start.elapsed();
             let handler_index = route_match.handler_index;
             let path_params = route_match.params;
             let handler = &state.handlers[handler_index];
@@ -694,7 +703,65 @@ async fn handle_request(
                 .map(|v| v.contains("multipart/form-data"))
                 .unwrap_or(false);
 
-            let body_bytes = if needs_body || needs_request || is_multipart {
+            let mut form_fields: HashMap<String, String> = HashMap::new();
+            let mut form_files: HashMap<String, (String, String, std::path::PathBuf)> =
+                HashMap::new();
+
+            let body_bytes = if is_multipart {
+                let need_body_bytes = needs_body || needs_request;
+                let collector = if need_body_bytes {
+                    Some(std::sync::Arc::new(std::sync::Mutex::new(Vec::new())))
+                } else {
+                    None
+                };
+
+                if let Some(content_type) = parts
+                    .headers
+                    .get("content-type")
+                    .and_then(|v| v.to_str().ok())
+                {
+                    let collector_clone = collector.clone();
+                    let stream = BodyStream::new(body)
+                        .map_ok(|frame| frame.into_data().unwrap_or_default())
+                        .map_err(std::io::Error::other)
+                        .map_ok(move |chunk| {
+                            if let Some(ref buf) = collector_clone {
+                                if let Ok(mut guard) = buf.lock() {
+                                    guard.extend_from_slice(&chunk);
+                                }
+                            }
+                            chunk
+                        });
+
+                    if let Err(err) = crate::multipart::parse_multipart(
+                        content_type,
+                        stream,
+                        &mut form_fields,
+                        &mut form_files,
+                    )
+                    .await
+                    {
+                        let mut response = HyperResponse::builder()
+                            .status(400)
+                            .header("content-type", "text/plain")
+                            .header("server", "Ignyx/3.0.0")
+                            .body(AppBody::full(format!("Malformed multipart data: {err}")))
+                            .unwrap();
+                        state
+                            .rust_middlewares
+                            .apply_cors_headers(response.headers_mut());
+                        return Ok(response);
+                    }
+
+                    if let Some(buf) = collector {
+                        buf.lock().map(|v| v.clone()).unwrap_or_default()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                }
+            } else if needs_body || needs_request {
                 use http_body_util::BodyExt;
                 match body.collect().await {
                     Ok(collected) => collected.to_bytes().to_vec(),
@@ -703,25 +770,6 @@ async fn handle_request(
             } else {
                 Vec::new() // Zero-cost if endpoint doesn't accept body
             };
-
-            let mut form_fields: HashMap<String, String> = HashMap::new();
-            let mut form_files: HashMap<String, (String, String, Vec<u8>)> = HashMap::new();
-
-            if is_multipart {
-                if let Some(content_type) = parts
-                    .headers
-                    .get("content-type")
-                    .and_then(|v| v.to_str().ok())
-                {
-                    crate::multipart::parse_multipart(
-                        content_type,
-                        &body_bytes,
-                        &mut form_fields,
-                        &mut form_files,
-                    )
-                    .await;
-                }
-            }
 
             // HONEST PATH: ship GIL execution to a background blocking thread
             // to prevent holding up the Tokio runtime reactor with Python execution lock
@@ -751,7 +799,7 @@ async fn handle_request(
                             let mut response = HyperResponse::builder()
                                 .status(422)
                                 .header("content-type", "application/json")
-                                .header("server", "Ignyx/2.3.0")
+                                .header("server", "Ignyx/3.0.0")
                                 .body(AppBody::full(error_body))
                                 .unwrap();
                             state
@@ -764,6 +812,7 @@ async fn handle_request(
             }
 
             // Spawn blocking to decouple the Tokio reactor from Python GIL
+            let py_exec_start = Instant::now();
             let result = tokio::task::spawn_blocking(move || {
                 Python::with_gil(|py| -> crate::handler::HandlerResult {
                     let handler = &state_clone.handlers[handler_index];
@@ -814,6 +863,12 @@ async fn handle_request(
             })
             .await
             .unwrap();
+            let py_exec_elapsed = py_exec_start.elapsed();
+            info!(
+                routing_ms = routing_elapsed.as_millis(),
+                python_ms = py_exec_elapsed.as_millis(),
+                "request timings"
+            );
 
             match result {
                 Ok(crate::handler::HandlerOutput::Full(
@@ -838,7 +893,7 @@ async fn handle_request(
                     let mut builder = HyperResponse::builder()
                         .status(status)
                         .header("content-type", &content_type)
-                        .header("server", "Ignyx/2.3.0");
+                        .header("server", "Ignyx/3.0.0");
 
                     if is_gzipped {
                         builder = builder.header("content-encoding", "gzip");
@@ -985,7 +1040,7 @@ async fn handle_request(
                     let mut builder = HyperResponse::builder()
                         .status(status)
                         .header("content-type", &content_type)
-                        .header("server", "Ignyx/2.3.0")
+                        .header("server", "Ignyx/3.0.0")
                         .header("transfer-encoding", "chunked")
                         .header("cache-control", "no-cache");
 
@@ -1010,7 +1065,7 @@ async fn handle_request(
                     let mut response = HyperResponse::builder()
                         .status(500)
                         .header("content-type", "application/json")
-                        .header("server", "Ignyx/2.3.0")
+                        .header("server", "Ignyx/3.0.0")
                         .body(AppBody::full(error_body))
                         .unwrap();
                     state
@@ -1076,7 +1131,7 @@ async fn handle_request(
             let mut builder = HyperResponse::builder()
                 .status(status)
                 .header("content-type", &content_type)
-                .header("server", "Ignyx/2.3.0");
+                .header("server", "Ignyx/3.0.0");
 
             if let Some(h) = custom_headers {
                 for (k, v) in h {
@@ -1113,7 +1168,7 @@ async fn handle_request(
     let mut response = HyperResponse::builder()
         .status(404)
         .header("content-type", "application/json")
-        .header("server", "Ignyx/2.3.0")
+        .header("server", "Ignyx/3.0.0")
         .body(AppBody::full(body))
         .unwrap();
     state

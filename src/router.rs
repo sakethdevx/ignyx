@@ -1,5 +1,6 @@
 use matchit::Router as MatchitRouter;
 use std::collections::HashMap;
+use tracing::instrument;
 // use std::sync::Arc; // Removed unused
 
 /// HTTP methods we support
@@ -63,6 +64,7 @@ impl Router {
     }
 
     /// Match a request path against registered routes.
+    #[instrument(skip(self), fields(method = ?method, path = path))]
     pub fn find(&self, method: Method, path: &str) -> Option<RouteMatch> {
         let tree = self.trees.get(&method)?;
         let matched = tree.at(path).ok()?;
