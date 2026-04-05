@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { docsPath, siteConfig } from "@/lib/site";
+import { marketingDocsHref, siteConfig } from "@/lib/site";
 
 const navItems = [
   { label: "Features", href: "#features" },
@@ -38,7 +38,7 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-3">
           <Button asChild variant="ghost" className="hidden sm:inline-flex">
-            <Link href={docsPath()}>View Docs</Link>
+            <Link href={marketingDocsHref()}>View Docs</Link>
           </Button>
           <Button asChild>
             <Link href="#getting-started">Get Started</Link>

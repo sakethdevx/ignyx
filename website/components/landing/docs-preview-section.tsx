@@ -9,12 +9,12 @@ import { Reveal } from "@/components/landing/reveal";
 import { SectionHeading } from "@/components/landing/section-heading";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/ui/glass-card";
-import { docsPath } from "@/lib/site";
+import { docsPath, marketingDocsHref } from "@/lib/site";
 
 const docsPreviewItems = [
   {
     label: "Quickstart",
-    href: docsPath("/quickstart/"),
+    href: marketingDocsHref("/quickstart/"),
     title: "Quickstart in under five minutes",
     description:
       "Install Ignyx, define your first route, and ship a framework that already thinks about validation, docs, performance, and deployment as part of the same story.",
@@ -31,7 +31,7 @@ app.run(host="0.0.0.0", port=8000)`,
   },
   {
     label: "Routing",
-    href: docsPath("/routing/"),
+    href: marketingDocsHref("/routing/"),
     title: "Routing that stays readable as the app grows",
     description:
       "Model expressive routes, typed parameters, and grouped routers without sacrificing clarity when your service surface area expands.",
@@ -49,7 +49,7 @@ app.include_router(users)`,
   },
   {
     label: "Requests",
-    href: docsPath("/request/"),
+    href: marketingDocsHref("/request/"),
     title: "Request handling built for real application flows",
     description:
       "Access headers, params, cookies, and body helpers through a request object that keeps the day-to-day API straightforward.",
@@ -67,7 +67,7 @@ async def inspect_request(request: Request):
   },
   {
     label: "Middleware",
-    href: docsPath("/middleware/"),
+    href: marketingDocsHref("/middleware/"),
     title: "Middleware with enough structure for platform teams",
     description:
       "Add logging, CORS, session handling, and custom request lifecycle hooks in a way that remains understandable across a team.",
@@ -81,7 +81,7 @@ app.add_middleware(GZipMiddleware(minimum_size=512))`,
   },
   {
     label: "Validation",
-    href: docsPath("/validation/"),
+    href: marketingDocsHref("/validation/"),
     title: "Validation that fits naturally into Python workflows",
     description:
       "Use typed request bodies and Pydantic-powered models to keep edge validation close to the handler and easy to reason about.",
@@ -101,7 +101,7 @@ async def create_user(body: CreateUser):
   },
   {
     label: "Security",
-    href: docsPath("/security/"),
+    href: marketingDocsHref("/security/"),
     title: "Security primitives ready for production APIs",
     description:
       "Layer auth and request guards into your routes without obscuring handler logic or overcomplicating common patterns.",
@@ -118,7 +118,7 @@ async def profile(user = Depends(auth)):
   },
   {
     label: "Deployment",
-    href: docsPath("/deployment/"),
+    href: marketingDocsHref("/deployment/"),
     title: "A deployment story shaped for serious environments",
     description:
       "Run Ignyx with a clear operational model, lean runtime assumptions, and enough control to fit modern cloud and internal platform setups.",
@@ -154,7 +154,7 @@ export function DocsPreviewSection() {
           <div className="grid lg:grid-cols-[260px_1fr]">
             <aside className="border-b border-white/10 bg-white/[0.03] p-6 lg:border-b-0 lg:border-r">
               <Link
-                href={docsPath()}
+                href={marketingDocsHref()}
                 className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-muted transition-colors hover:border-electric-400/30 hover:bg-white/[0.07] hover:text-white"
               >
                 <Search className="h-4 w-4" />

@@ -14,7 +14,7 @@ import { Reveal } from "@/components/landing/reveal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/ui/glass-card";
-import { docsPath } from "@/lib/site";
+import { marketingDocsHref } from "@/lib/site";
 
 const typingFrames = [
   "pip install ignyx",
@@ -86,7 +86,7 @@ export function HeroSection() {
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="secondary">
-                  <Link href={docsPath()}>View Docs</Link>
+                  <Link href={marketingDocsHref()}>View Docs</Link>
                 </Button>
               </div>
             </Reveal>

@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { Github, Mail, MessageSquareMore, ScrollText } from "lucide-react";
-import { docsPath, siteConfig } from "@/lib/site";
+import { marketingDocsHref, siteConfig } from "@/lib/site";
 
 const footerLinks = [
-  { label: "Docs", href: docsPath(), icon: ScrollText },
+  { label: "Docs", href: marketingDocsHref(), icon: ScrollText },
   { label: "GitHub", href: siteConfig.githubUrl, icon: Github },
   { label: "Community", href: `${siteConfig.githubUrl}/discussions`, icon: MessageSquareMore },
   { label: "Contact", href: "mailto:hello@ignyx.dev", icon: Mail },

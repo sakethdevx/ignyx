@@ -31,3 +31,11 @@ export function externalDocsUrl(path = "/") {
   const trimmedBase = siteConfig.docsSiteUrl.replace(/\/$/, "");
   return normalized === "/" ? `${trimmedBase}/` : `${trimmedBase}${normalized}`;
 }
+
+export function marketingDocsHref(path = "/") {
+  if (siteConfig.basePath) {
+    return externalDocsUrl(path);
+  }
+
+  return docsPath(path);
+}
