@@ -5,6 +5,8 @@ repo_url: https://github.com/sakethdevx/ignyx
 repo_name: sakethdevx/ignyx
 theme:
   name: material
+  logo: assets/ignyx-logo.svg
+  favicon: assets/favicon.svg
   features:
     - navigation.tabs
     - navigation.top
