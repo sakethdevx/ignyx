@@ -38,7 +38,7 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-3">
           <Button asChild variant="ghost" className="hidden sm:inline-flex">
-            <Link href={marketingDocsHref()}>View Docs</Link>
+            <a href={marketingDocsHref()}>View Docs</a>
           </Button>
           <Button asChild>
             <Link href="#getting-started">Get Started</Link>

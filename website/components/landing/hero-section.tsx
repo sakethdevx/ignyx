@@ -86,7 +86,7 @@ export function HeroSection() {
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="secondary">
-                  <Link href={marketingDocsHref()}>View Docs</Link>
+                  <a href={marketingDocsHref()}>View Docs</a>
                 </Button>
               </div>
             </Reveal>

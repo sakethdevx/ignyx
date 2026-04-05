@@ -1,6 +1,4 @@
 "use client";
-
-import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { Search, TerminalSquare } from "lucide-react";
 import { useState } from "react";
@@ -9,7 +7,7 @@ import { Reveal } from "@/components/landing/reveal";
 import { SectionHeading } from "@/components/landing/section-heading";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/ui/glass-card";
-import { docsPath, marketingDocsHref } from "@/lib/site";
+import { marketingDocsHref } from "@/lib/site";
 
 const docsPreviewItems = [
   {
@@ -153,13 +151,13 @@ export function DocsPreviewSection() {
         <GlassCard className="mt-14 overflow-hidden rounded-[34px] p-0">
           <div className="grid lg:grid-cols-[260px_1fr]">
             <aside className="border-b border-white/10 bg-white/[0.03] p-6 lg:border-b-0 lg:border-r">
-              <Link
+              <a
                 href={marketingDocsHref()}
                 className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-muted transition-colors hover:border-electric-400/30 hover:bg-white/[0.07] hover:text-white"
               >
                 <Search className="h-4 w-4" />
                 Search docs
-              </Link>
+              </a>
               <div className="mt-6 space-y-2">
                 {docsPreviewItems.map((item) => (
                   <button
@@ -197,7 +195,7 @@ export function DocsPreviewSection() {
                   </p>
                   <div className="mt-6">
                     <Button asChild variant="secondary">
-                      <Link href={activeItem.href}>Open full documentation</Link>
+                      <a href={activeItem.href}>Open full documentation</a>
                     </Button>
                   </div>
 

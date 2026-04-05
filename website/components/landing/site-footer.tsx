@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Github, Mail, MessageSquareMore, ScrollText } from "lucide-react";
 import { marketingDocsHref, siteConfig } from "@/lib/site";
 
@@ -21,14 +20,14 @@ export function SiteFooter() {
         </div>
         <div className="flex flex-wrap gap-3">
           {footerLinks.map((link) => (
-            <Link
+            <a
               key={link.label}
               href={link.href}
               className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-muted transition-colors hover:text-white"
             >
               <link.icon className="h-4 w-4" />
               {link.label}
-            </Link>
+            </a>
           ))}
         </div>
       </div>
