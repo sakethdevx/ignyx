@@ -25,6 +25,13 @@ venv/
 *.swp
 *.swo
 
+# Node / frontend
+node_modules/
+.next/
+website/node_modules/
+website/.next/
+website/out/
+
 # macOS
 .DS_Store
 

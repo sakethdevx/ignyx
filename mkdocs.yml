@@ -1,6 +1,6 @@
 site_name: Ignyx
 site_description: Ignite your API. Built in Rust, runs in Python.
-site_url: https://sakethdevx.github.io/ignyx
+site_url: https://sakethdevx.github.io/ignyx/docs
 repo_url: https://github.com/sakethdevx/ignyx
 repo_name: sakethdevx/ignyx
 theme:
@@ -10,6 +10,8 @@ theme:
     - navigation.top
     - search.suggest
     - content.code.copy
+extra:
+  homepage: https://sakethdevx.github.io/ignyx
 nav:
   - Home: index.md
   - Quickstart: quickstart.md

@@ -184,3 +184,20 @@ Ignyx manages its own Tokio runtime. No Uvicorn or Gunicorn needed. Just `python
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+## Website
+
+The repo now includes a premium Next.js marketing site in [`website/`](website/README.md).
+
+Run locally:
+
+```bash
+cd website
+npm install
+npm run dev
+```
+
+The existing MkDocs docs remain in `docs/`, and the GitHub Pages deployment is intended to publish:
+
+- the Next.js site at `/ignyx/`
+- the documentation at `/ignyx/docs/`
