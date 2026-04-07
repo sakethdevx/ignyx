@@ -45,6 +45,13 @@ from ignyx.exceptions import HTTPException
 from ignyx.request import Headers
 from ignyx.responses import BaseResponse
 
+try:
+    from pydantic import BaseModel as _ImportedPydanticBaseModel
+except ImportError:  # pragma: no cover - pydantic is an install dependency
+    _PydanticBaseModel: type[Any] | None = None
+else:
+    _PydanticBaseModel = _ImportedPydanticBaseModel
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Path-pattern helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -300,6 +307,17 @@ def _serialize_result(result: Any) -> Tuple[int, str, bytes, Dict[str, str], boo
         extra_headers.update({k.lower(): v for k, v in (result.headers or {}).items()})
         return (result.status_code, result.content_type, body_bytes, extra_headers, False, None)
 
+    # ── Pydantic BaseModel → JSON ───────────────────────────────────────────
+    if _PydanticBaseModel is not None and isinstance(result, _PydanticBaseModel):
+        return (
+            status,
+            "application/json",
+            json.dumps(result.model_dump(mode="json")).encode(),
+            extra_headers,
+            False,
+            None,
+        )
+
     # ── dict / list → JSON ────────────────────────────────────────────────────
     if isinstance(result, (dict, list, int, float, bool)):
         return (
@@ -326,7 +344,10 @@ def _serialize_result(result: Any) -> Tuple[int, str, bytes, Dict[str, str], boo
 
     # ── Fallback: attempt JSON serialisation ─────────────────────────────────
     try:
-        body_bytes = json.dumps(result).encode()
+        if hasattr(result, "model_dump"):
+            body_bytes = json.dumps(result.model_dump(mode="json")).encode()
+        else:
+            body_bytes = json.dumps(result).encode()
     except (TypeError, ValueError):
         body_bytes = str(result).encode()
     return (status, "application/json", body_bytes, extra_headers, False, None)
@@ -416,6 +437,7 @@ async def _build_kwargs(
             continue  # dispatch wrapper will inject these
 
         # ── UploadFile (multipart) ───────────────────────────────────────────
+        _UploadFile: type[Any] | None
         try:
             from ignyx.uploads import UploadFile as _UploadFile
         except Exception:  # pragma: no cover - import guard

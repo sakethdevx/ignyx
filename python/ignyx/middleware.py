@@ -8,7 +8,7 @@ import json
 import time
 import traceback
 from collections import defaultdict  # noqa: F401  # kept for backward compat
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 
 class Middleware:
@@ -75,7 +75,7 @@ class CORSMiddleware(Middleware):
 
         body = response
         status = 200
-        headers = {}
+        headers: Dict[str, str] = {}
 
         if isinstance(response, tuple):
             body = response[0]
@@ -199,7 +199,10 @@ class SessionMiddleware(Middleware):
     def _decode_session(token: str) -> Dict[str, Any]:
         try:
             raw = base64.urlsafe_b64decode(token.encode())
-            return json.loads(raw.decode())
+            decoded = json.loads(raw.decode())
+            if isinstance(decoded, dict):
+                return cast(Dict[str, Any], decoded)
+            return {}
         except Exception:
             return {}
 

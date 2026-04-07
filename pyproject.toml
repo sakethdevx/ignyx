@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "ignyx"
-version = "3.0.0"
+version = "3.1.0"
 description = "Rust-powered Python web framework — 10x faster than FastAPI"
 readme = "README.md"
 license = { text = "MIT" }
@@ -64,6 +64,37 @@ warn_no_return = true
 warn_unreachable = true
 strict_equality = true
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "conftest",
+    "test_asgi",
+    "test_background_tasks",
+    "test_bugs",
+    "test_dependencies",
+    "test_exceptions",
+    "test_jwt",
+    "test_lifespan",
+    "test_middleware",
+    "test_openapi",
+    "test_p3",
+    "test_pagination",
+    "test_pubsub",
+    "test_responses",
+    "test_routing",
+    "test_security",
+    "test_sessions",
+    "test_static",
+    "test_uploads",
+    "test_validation",
+]
+check_untyped_defs = false
+disallow_any_generics = false
+disallow_untyped_calls = false
+disallow_untyped_defs = false
+disallow_untyped_decorators = false
+warn_return_any = false
+disable_error_code = ["annotation-unchecked", "assignment", "no-untyped-def", "no-untyped-call", "untyped-decorator"]
 
 [tool.ruff]
 line-length = 100

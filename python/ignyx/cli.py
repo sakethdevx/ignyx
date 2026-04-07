@@ -232,6 +232,7 @@ python main.py
 ## API Documentation
 
 Once the server is running, visit:
+- Scalar API Reference: http://localhost:8000/scalar
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 - OpenAPI JSON: http://localhost:8000/openapi.json
@@ -275,7 +276,8 @@ def test_health_check():
     print(f"  cd {name}")
     print("  pip install -r requirements.txt")
     print("  ignyx-cli dev main.py")
-    print("\n📖 Documentation: http://localhost:8000/docs")
+    print("\n📖 Scalar API Reference: http://localhost:8000/scalar")
+    print("📖 Swagger UI: http://localhost:8000/docs")
 
 
 def dev_server(target: str, host: str = "0.0.0.0", port: int = 8000) -> None:

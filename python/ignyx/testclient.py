@@ -6,6 +6,8 @@ import httpx
 
 
 class TestResponse:
+    __test__ = False
+
     def __init__(self, status_code: int, body: bytes | str, headers: Any) -> None:
         self.status_code = status_code
         self._body = body
@@ -18,6 +20,8 @@ class TestResponse:
 
 class TestClient:
     """In-process test client using ASGITransport (no sockets required)."""
+
+    __test__ = False
 
     def __init__(self, app: Any) -> None:
         self._asgi_app = app.asgi()
@@ -56,6 +60,6 @@ class TestClient:
 
     def __del__(self) -> None:  # pragma: no cover - best-effort cleanup
         try:
-            self._client.close()
+            asyncio.run(self._client.aclose())
         except Exception:
             pass

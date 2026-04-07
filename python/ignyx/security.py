@@ -1,5 +1,5 @@
 import base64
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 from ignyx.exceptions import HTTPException
 
@@ -100,7 +100,7 @@ class JWTBearer:
             )
         token = auth[7:].strip()
         try:
-            return self._decoder.decode(token)  # type: ignore[return-value]
+            return cast(Dict[str, Any], self._decoder.decode(token))
         except Exception:
             raise HTTPException(
                 401,

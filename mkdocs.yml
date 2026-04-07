@@ -17,6 +17,8 @@ extra:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
+  - API Docs: api_docs.md
+  - Pagination: pagination.md
   - Routing: routing.md
   - Request: request.md
   - Response: response.md

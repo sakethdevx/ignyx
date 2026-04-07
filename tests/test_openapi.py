@@ -30,12 +30,27 @@ def test_swagger_ui_200():
     assert r.status_code == 200
     assert "swagger-ui" in r.text.lower()
 
+def test_scalar_ui_200():
+    app = Ignyx()
+    client = TestClient(app)
+    r = client.get("/scalar")
+    assert r.status_code == 200
+    assert "@scalar/api-reference" in r.text
+    assert "/openapi.json" in r.text
+
 def test_redoc_200():
     app = Ignyx()
     client = TestClient(app)
     r = client.get("/redoc")
     assert r.status_code == 200
     assert "redoc" in r.text.lower()
+
+def test_scalar_ui_uses_custom_openapi_url():
+    app = Ignyx(openapi_url="/schema.json")
+    client = TestClient(app)
+    r = client.get("/scalar")
+    assert r.status_code == 200
+    assert "/schema.json" in r.text
 
 def test_path_in_schema():
     app = Ignyx()

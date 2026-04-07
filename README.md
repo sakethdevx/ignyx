@@ -37,7 +37,9 @@ Ignyx is a next-generation Python web framework engineered for maximum throughpu
 - **Zero Overhead**: Owns the full HTTP pipeline — no ASGI overhead.
 - **Hot Reload**: Blazing fast development with built-in file watcher.
 - **Pydantic v2**: Deep integration for request body validation.
+- **Modern API Docs**: Ships with Scalar at `/scalar`, plus Swagger UI and ReDoc.
 - **Advanced OpenAPI**: Auto-generates schemas with Pydantic model support.
+- **Built-in Pagination**: Standard `limit`/`offset` pagination with typed page envelopes.
 - **Dependency Injection**: Familiar `Depends()` pattern for clean logic.
 - **WebSockets**: Native, high-concurrency WebSocket support.
 - **Modular**: Organize APIs with `Router` prefixes.
@@ -58,7 +60,7 @@ Ignyx is a next-generation Python web framework engineered for maximum throughpu
 ## Installation
 
 ```bash
-pip install ignyx==3.0.0
+pip install ignyx==3.1.0
 ```
 
 Or with `uv`:
@@ -80,6 +82,71 @@ async def root(request):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, reload=True)
+```
+
+When the app is running, Ignyx serves docs out of the box:
+
+- Scalar API Reference: `http://localhost:8000/scalar`
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+- OpenAPI JSON: `http://localhost:8000/openapi.json`
+
+## What's New In 3.1
+
+### Modern API Docs
+
+Ignyx now ships with a modern Scalar-powered API reference at `/scalar` by default, while keeping Swagger UI and ReDoc available for teams that want multiple documentation surfaces.
+
+```python
+from ignyx import Ignyx
+
+app = Ignyx()
+
+# Defaults:
+# /scalar       -> Scalar API reference
+# /docs         -> Swagger UI
+# /redoc        -> ReDoc
+# /openapi.json -> OpenAPI schema
+```
+
+### Built-in Pagination
+
+Use `paginate()` to read `limit` and `offset` directly from the incoming request and return a consistent `Page[T]` response shape.
+
+```python
+from ignyx import Ignyx
+from ignyx.pagination import Page, paginate
+from ignyx.request import Request
+from pydantic import BaseModel
+
+app = Ignyx()
+
+class UserOut(BaseModel):
+    id: int
+    name: str
+
+USERS = [
+    UserOut(id=1, name="Ada"),
+    UserOut(id=2, name="Linus"),
+    UserOut(id=3, name="Grace"),
+]
+
+@app.get("/users")
+def list_users(request: Request) -> Page[UserOut]:
+    return paginate(request, USERS, default_limit=2)
+```
+
+Response shape:
+
+```json
+{
+  "total_items": 3,
+  "next_page": "/users?limit=2&offset=2",
+  "items": [
+    {"id": 1, "name": "Ada"},
+    {"id": 2, "name": "Linus"}
+  ]
+}
 ```
 
 ## Feature Examples
@@ -185,19 +252,10 @@ Ignyx manages its own Tokio runtime. No Uvicorn or Gunicorn needed. Just `python
 
 This project is licensed under the [MIT License](LICENSE).
 
-## Website
+## Documentation Site
 
-The repo now includes a premium Next.js marketing site in [`website/`](website/README.md).
+The documentation site in [`docs/`](docs/) is powered by MkDocs Material and published at:
 
-Run locally:
+- `https://sakethdevx.github.io/ignyx/docs/`
 
-```bash
-cd website
-npm install
-npm run dev
-```
-
-The existing MkDocs docs remain in `docs/`, and the GitHub Pages deployment is intended to publish:
-
-- the Next.js site at `/ignyx/`
-- the documentation at `/ignyx/docs/`
+It now documents the new Scalar API reference and built-in pagination introduced in `3.1.0`.

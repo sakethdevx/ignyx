@@ -12,6 +12,7 @@ from ignyx.depends import BackgroundTask, BackgroundTasks, unwrap_annotated
 from ignyx.middleware import ErrorHandlerMiddleware, Middleware
 from ignyx.openapi import (
     REDOC_HTML,
+    SCALAR_HTML,
     SWAGGER_UI_HTML,
     generate_openapi_schema,
 )
@@ -36,11 +37,12 @@ class Ignyx:
     def __init__(
         self,
         title: str = "Ignyx",
-        version: str = "3.0.0",
+        version: str = "3.1.0",
         debug: bool = False,
         description: str = "",
         docs_url: str = "/docs",
         redoc_url: str = "/redoc",
+        scalar_url: str = "/scalar",
         openapi_url: str = "/openapi.json",
         rate_limit_requests: Optional[int] = None,
         rate_limit_window: int = 60,
@@ -57,8 +59,10 @@ class Ignyx:
         self.description: str = description
         self.docs_url: str = docs_url
         self.redoc_url: str = redoc_url
+        self.scalar_url: str = scalar_url
         self.openapi_url: str = openapi_url
         self._openapi_schema: Optional[Dict[str, Any]] = None
+        self._docs_registered: bool = False
         self._exception_handlers: Dict[Union[int, Type[Exception]], Callable[..., Any]] = {}
         self._startup_handlers: List[Callable[..., Any]] = []
         self._shutdown_handlers: List[Callable[..., Any]] = []
@@ -206,7 +210,7 @@ class Ignyx:
         if method != "OPTIONS" and not any(
             r["path"] == path and r["method"] == "OPTIONS" for r in self._routes
         ):
-            def options_handler(request):
+            def options_handler(request: Any) -> str:
                 return ""
 
             opts_dispatch = self._create_dispatch(options_handler)
@@ -339,7 +343,10 @@ class Ignyx:
         return self._openapi_schema
 
     def _register_docs_routes(self) -> None:
-        """Register the OpenAPI, Swagger UI, and ReDoc routes."""
+        """Register the OpenAPI, Swagger UI, Scalar, and ReDoc routes."""
+        if self._docs_registered:
+            return
+
         schema = self.openapi()
 
         # OpenAPI JSON endpoint
@@ -373,6 +380,24 @@ class Ignyx:
             "name": "swagger_ui",
         })
 
+        # Scalar
+        scalar_html = SCALAR_HTML.format(
+            title=self.title,
+            openapi_url=self.openapi_url,
+        )
+
+        def scalar_ui() -> str:
+            return scalar_html
+
+        self._server.add_route("GET", self.scalar_url, scalar_ui)
+        self._routes.append({
+            "method": "GET",
+            "path": self.scalar_url,
+            "handler": scalar_ui,
+            "dispatch": self._create_dispatch(scalar_ui),
+            "name": "scalar_ui",
+        })
+
         # ReDoc
         redoc_html = REDOC_HTML.format(
             title=self.title,
@@ -390,6 +415,7 @@ class Ignyx:
             "dispatch": self._create_dispatch(redoc),
             "name": "redoc",
         })
+        self._docs_registered = True
 
     def dependency_overrides(self) -> Dict[Callable[..., Any], Any]:
         """Get the dependency overrides dict (for testing)."""
@@ -448,6 +474,7 @@ class Ignyx:
 
         print(f"🔥 Ignyx v{self.version} — {self.title}", flush=True)
         print(f"   📖 Docs:  http://{host}:{port}{self.docs_url}", flush=True)
+        print(f"   ✨ Scalar: http://{host}:{port}{self.scalar_url}", flush=True)
         print(f"   📖 ReDoc: http://{host}:{port}{self.redoc_url}", flush=True)
         print(f"   📋 OpenAPI: http://{host}:{port}{self.openapi_url}", flush=True)
 

@@ -14,6 +14,7 @@ from ignyx.middleware import (
     GZipMiddleware,
     Middleware,
 )
+from ignyx.pagination import Page, paginate
 from ignyx.responses import (
     EventSourceResponse,
     FileResponse,
@@ -35,6 +36,7 @@ __all__ = [
     "Response",
     "Middleware",
     "Depends",
+    "Page",
     "Router",
     "JSONResponse",
     "HTMLResponse",
@@ -57,5 +59,6 @@ __all__ = [
     "CORSMiddleware",
     "ErrorHandlerMiddleware",
     "GZipMiddleware",
+    "paginate",
 ]
-__version__ = "3.0.0"
+__version__ = "3.1.0"

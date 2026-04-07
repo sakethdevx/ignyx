@@ -1,5 +1,5 @@
 """
-OpenAPI schema generation and Swagger UI / ReDoc serving.
+OpenAPI schema generation and API docs serving.
 Auto-generates OpenAPI 3.1.0 schema from registered routes.
 Supports advanced Pydantic model parsing, docstring extraction, and response schemas.
 """
@@ -284,6 +284,29 @@ SWAGGER_UI_HTML = """<!DOCTYPE html>
             layout: "StandaloneLayout"
         }})
     </script>
+</body>
+</html>"""
+
+SCALAR_HTML = """<!DOCTYPE html>
+<html>
+<head>
+    <title>{title} - Scalar API Reference</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {{
+            margin: 0;
+            background: #0f172a;
+        }}
+    </style>
+</head>
+<body>
+    <script
+        id="api-reference"
+        data-url="{openapi_url}"
+        data-configuration='{{"theme":"saturn","layout":"modern","darkMode":true,"searchHotKey":"k"}}'
+    ></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
 </body>
 </html>"""
 
